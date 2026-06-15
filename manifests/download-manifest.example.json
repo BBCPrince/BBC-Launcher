@@ -1,0 +1,26 @@
+{
+  "MinecraftVersion": "1.21.11",
+  "Entries": [
+    {
+      "RemoteUrl": "https://piston-meta.mojang.com/v1/packages/REPLACE/client.jar",
+      "LocalRelativePath": "client.jar",
+      "ExpectedSizeBytes": 0,
+      "Sha256": "",
+      "RequiredBeforeLaunch": true
+    },
+    {
+      "RemoteUrl": "https://piston-meta.mojang.com/v1/packages/REPLACE/libraries.zip",
+      "LocalRelativePath": "libraries/libraries.zip",
+      "ExpectedSizeBytes": 0,
+      "Sha256": "",
+      "RequiredBeforeLaunch": true
+    },
+    {
+      "RemoteUrl": "https://piston-meta.mojang.com/v1/packages/REPLACE/assets-index.json",
+      "LocalRelativePath": "assets/indexes/1.21.11.json",
+      "ExpectedSizeBytes": 0,
+      "Sha256": "",
+      "RequiredBeforeLaunch": true
+    }
+  ]
+}

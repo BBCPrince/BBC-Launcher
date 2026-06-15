@@ -1,0 +1,169 @@
+﻿Microsoft (R) COFF/PE Dumper Version 14.44.35225.0
+Copyright (C) Microsoft Corporation.  All rights reserved.
+
+
+Dump of file local-test-files\LocalState\native\glfw.dll
+
+File Type: DLL
+
+  Section contains the following exports for glfw3.dll
+
+    00000000 characteristics
+    FFFFFFFF time date stamp
+        0.00 version
+           1 ordinal base
+         140 number of functions
+         140 number of names
+
+    ordinal hint RVA      name
+
+          1    0 0007A7D8 _glfw_egl_library
+          2    1 0007A7E8 _glfw_mesa_library
+          3    2 0007A7F0 _glfw_opengl_library
+          4    3 0007A7E0 _glfw_opengles_library
+          5    4 0007A7D0 _glfw_vulkan_library
+          6    5 00012240 glfwAttachWin32Window
+          7    6 000030E0 glfwCreateCursor
+          8    7 000031B0 glfwCreateStandardCursor
+          9    8 00006C70 glfwCreateWindow
+         10    9 000068A0 glfwCreateWindowSurface
+         11    A 00006F20 glfwDefaultWindowHints
+         12    B 00003260 glfwDestroyCursor
+         13    C 00007030 glfwDestroyWindow
+         14    D 00001AB0 glfwExtensionSupported
+         15    E 00007110 glfwFocusWindow
+         16    F 00003330 glfwGetClipboardString
+         17   10 00001C60 glfwGetCurrentContext
+         18   11 00003360 glfwGetCursorPos
+         19   12 00009300 glfwGetEGLConfig
+         20   13 00009350 glfwGetEGLContext
+         21   14 000093A0 glfwGetEGLDisplay
+         22   15 000093D0 glfwGetEGLSurface
+         23   16 00002560 glfwGetError
+         24   17 00007130 glfwGetFramebufferSize
+         25   18 000033C0 glfwGetGamepadName
+         26   19 00003470 glfwGetGamepadState
+         27   1A 00005C90 glfwGetGammaRamp
+         28   1B 00003A50 glfwGetInputMode
+         29   1C 00006960 glfwGetInstanceProcAddress
+         30   1D 00003AF0 glfwGetJoystickAxes
+         31   1E 00003BC0 glfwGetJoystickButtons
+         32   1F 00003CC0 glfwGetJoystickGUID
+         33   20 00003D70 glfwGetJoystickHats
+         34   21 00003E40 glfwGetJoystickName
+         35   22 00003EF0 glfwGetJoystickUserPointer
+         36   23 00003F40 glfwGetKey
+         37   24 00003FC0 glfwGetKeyName
+         38   25 00004020 glfwGetKeyScancode
+         39   26 00005D10 glfwGetMonitorContentScale
+         40   27 00005D40 glfwGetMonitorName
+         41   28 00005D70 glfwGetMonitorPhysicalSize
+         42   29 00005DC0 glfwGetMonitorPos
+         43   2A 00005DF0 glfwGetMonitorUserPointer
+         44   2B 00005E20 glfwGetMonitorWorkarea
+         45   2C 00005E70 glfwGetMonitors
+         46   2D 00004080 glfwGetMouseButton
+         47   2E 00009A00 glfwGetOSMesaColorBuffer
+         48   2F 00009B00 glfwGetOSMesaContext
+         49   30 00009B50 glfwGetOSMesaDepthBuffer
+         50   31 00006A00 glfwGetPhysicalDevicePresentationSupport
+         51   32 000063A0 glfwGetPlatform
+         52   33 00005EB0 glfwGetPrimaryMonitor
+         53   34 00001C90 glfwGetProcAddress
+         54   35 00006AA0 glfwGetRequiredInstanceExtensions
+         55   36 000040F0 glfwGetTime
+         56   37 00004190 glfwGetTimerFrequency
+         57   38 000041C0 glfwGetTimerValue
+         58   39 000025C0 glfwGetVersion
+         59   3A 000063D0 glfwGetVersionString
+         60   3B 00005EF0 glfwGetVideoMode
+         61   3C 00005F40 glfwGetVideoModes
+         62   3D 00014BF0 glfwGetWGLContext
+         63   3E 0000F0F0 glfwGetWin32Adapter
+         64   3F 0000F120 glfwGetWin32Monitor
+         65   40 000125D0 glfwGetWin32Window
+         66   41 00007160 glfwGetWindowAttrib
+         67   42 00007350 glfwGetWindowContentScale
+         68   43 00007380 glfwGetWindowFrameSize
+         69   44 000073D0 glfwGetWindowMonitor
+         70   45 00007400 glfwGetWindowOpacity
+         71   46 00007440 glfwGetWindowPos
+         72   47 00007470 glfwGetWindowSize
+         73   48 000074A0 glfwGetWindowUserPointer
+         74   49 000074D0 glfwHideWindow
+         75   4A 00007500 glfwIconifyWindow
+         76   4B 000025F0 glfwInit
+         77   4C 00002750 glfwInitAllocator
+         78   4D 000027B0 glfwInitHint
+         79   4E 00002830 glfwInitVulkanLoader
+         80   4F 000041F0 glfwJoystickIsGamepad
+         81   50 000042A0 glfwJoystickPresent
+         82   51 00001CF0 glfwMakeContextCurrent
+         83   52 00007520 glfwMaximizeWindow
+         84   53 000063E0 glfwPlatformSupported
+         85   54 00007550 glfwPollEvents
+         86   55 00007570 glfwPostEmptyEvent
+         87   56 00004340 glfwRawMouseMotionSupported
+         88   57 00007590 glfwRequestWindowAttention
+         89   58 000075B0 glfwRestoreWindow
+         90   59 00004370 glfwSetCharCallback
+         91   5A 000043B0 glfwSetCharModsCallback
+         92   5B 000043F0 glfwSetClipboardString
+         93   5C 00004410 glfwSetCursor
+         94   5D 00004430 glfwSetCursorEnterCallback
+         95   5E 00004470 glfwSetCursorPos
+         96   5F 00004570 glfwSetCursorPosCallback
+         97   60 000045B0 glfwSetDropCallback
+         98   61 00002840 glfwSetErrorCallback
+         99   62 000075D0 glfwSetFramebufferSizeCallback
+        100   63 00005FA0 glfwSetGamma
+        101   64 00006180 glfwSetGammaRamp
+        102   65 000045F0 glfwSetInputMode
+        103   66 00004830 glfwSetJoystickCallback
+        104   67 000048A0 glfwSetJoystickUserPointer
+        105   68 000048E0 glfwSetKeyCallback
+        106   69 00006210 glfwSetMonitorCallback
+        107   6A 00006250 glfwSetMonitorUserPointer
+        108   6B 00004920 glfwSetMouseButtonCallback
+        109   6C 00004960 glfwSetScrollCallback
+        110   6D 000049A0 glfwSetTime
+        111   6E 00007610 glfwSetWindowAspectRatio
+        112   6F 00007670 glfwSetWindowAttrib
+        113   70 00007750 glfwSetWindowCloseCallback
+        114   71 00007790 glfwSetWindowContentScaleCallback
+        115   72 000077D0 glfwSetWindowFocusCallback
+        116   73 00007810 glfwSetWindowIcon
+        117   74 00007880 glfwSetWindowIconifyCallback
+        118   75 000078C0 glfwSetWindowMaximizeCallback
+        119   76 00007900 glfwSetWindowMonitor
+        120   77 00007990 glfwSetWindowOpacity
+        121   78 000079E0 glfwSetWindowPos
+        122   79 00007A10 glfwSetWindowPosCallback
+        123   7A 00007A50 glfwSetWindowRefreshCallback
+        124   7B 00007A90 glfwSetWindowShouldClose
+        125   7C 00007AB0 glfwSetWindowSize
+        126   7D 00007AE0 glfwSetWindowSizeCallback
+        127   7E 00007B20 glfwSetWindowSizeLimits
+        128   7F 00007BD0 glfwSetWindowTitle
+        129   80 00007BF0 glfwSetWindowUserPointer
+        130   81 00007C10 glfwShowWindow
+        131   82 00001D90 glfwSwapBuffers
+        132   83 00001DD0 glfwSwapInterval
+        133   84 00002850 glfwTerminate
+        134   85 00004A90 glfwUpdateGamepadMappings
+        135   86 00006B00 glfwVulkanSupported
+        136   87 00007C60 glfwWaitEvents
+        137   88 00007C80 glfwWaitEventsTimeout
+        138   89 00007CE0 glfwWindowHint
+        139   8A 00008030 glfwWindowHintString
+        140   8B 000080C0 glfwWindowShouldClose
+
+  Summary
+
+        7000 .data
+        3000 .pdata
+       45000 .rdata
+        1000 .reloc
+        1000 .rsrc
+       2F000 .text
+        1000 _RDATA

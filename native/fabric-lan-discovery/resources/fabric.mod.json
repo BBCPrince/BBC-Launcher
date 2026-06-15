@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "xbox_lan_discovery",
+  "version": "1.0.2",
+  "name": "Xbox LAN Discovery Patch",
+  "description": "Binds Minecraft LAN discovery multicast and preserves bridged PC LAN hosts on Xbox.",
+  "environment": "client",
+  "mixins": [
+    "xbox_lan_discovery.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.15.0",
+    "minecraft": ">=1.21"
+  }
+}

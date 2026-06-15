@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Console-only log4j2 configuration for the Xbox UWP child process.
+  The default Mojang config tries to roll latest.log on disk; under UWP that fails with AccessDenied.
+  Console output is captured by the launcher's stdout/stderr pipe and written to the launcher log.
+-->
+<Configuration status="WARN">
+    <Appenders>
+        <Console name="SysOut" target="SYSTEM_OUT">
+            <PatternLayout pattern="[%d{HH:mm:ss}] [%t/%level]: %msg%n%xEx"/>
+        </Console>
+        <Console name="SysErr" target="SYSTEM_ERR">
+            <PatternLayout pattern="[%d{HH:mm:ss}] [%t/%level]: %msg%n%xEx"/>
+        </Console>
+    </Appenders>
+    <Loggers>
+        <Logger name="com.mojang" level="INFO" additivity="false">
+            <AppenderRef ref="SysOut"/>
+        </Logger>
+        <Logger name="net.minecraft" level="INFO" additivity="false">
+            <AppenderRef ref="SysOut"/>
+        </Logger>
+        <Root level="INFO">
+            <AppenderRef ref="SysOut"/>
+        </Root>
+    </Loggers>
+</Configuration>

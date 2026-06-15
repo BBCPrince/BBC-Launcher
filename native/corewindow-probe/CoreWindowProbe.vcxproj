@@ -1,0 +1,232 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup Label="Globals">
+    <CppWinRTOptimized>true</CppWinRTOptimized>
+    <CppWinRTRootNamespaceAutoMerge>true</CppWinRTRootNamespaceAutoMerge>
+    <MinimalCoreWin>true</MinimalCoreWin>
+    <ProjectGuid>{B72A19B4-9B45-4E44-A70F-5EFC5B9855C5}</ProjectGuid>
+    <ProjectName>CoreWindowProbe</ProjectName>
+    <RootNamespace>CoreWindowProbe</RootNamespace>
+    <DefaultLanguage>en-US</DefaultLanguage>
+    <MinimumVisualStudioVersion>17.0</MinimumVisualStudioVersion>
+    <AppContainerApplication>true</AppContainerApplication>
+    <ApplicationType>Windows Store</ApplicationType>
+    <ApplicationTypeRevision>10.0</ApplicationTypeRevision>
+    <WindowsTargetPlatformVersion Condition="'$(WindowsTargetPlatformVersion)' == ''">10.0.26100.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformMinVersion>10.0.17763.0</WindowsTargetPlatformMinVersion>
+    <AppxPackageSigningEnabled>false</AppxPackageSigningEnabled>
+    <GenerateAppxPackageOnBuild>true</GenerateAppxPackageOnBuild>
+    <AppxBundle>Never</AppxBundle>
+    <UapAppxPackageBuildMode>SideLoadOnly</UapAppxPackageBuildMode>
+    <IncludeMinecraftPayload Condition="'$(IncludeMinecraftPayload)' == ''">false</IncludeMinecraftPayload>
+    <MinecraftPayloadRoot Condition="'$(MinecraftPayloadRoot)' == ''">..\..\local-test-files\LocalState</MinecraftPayloadRoot>
+    <DownloadMinecraftFilesOnFirstLaunch Condition="'$(DownloadMinecraftFilesOnFirstLaunch)' == ''">false</DownloadMinecraftFilesOnFirstLaunch>
+    <DownloadOnlyAssetObjectsOnFirstLaunch Condition="'$(DownloadOnlyAssetObjectsOnFirstLaunch)' == ''">false</DownloadOnlyAssetObjectsOnFirstLaunch>
+    <TestFixesBuild Condition="'$(TestFixesBuild)' == ''">false</TestFixesBuild>
+    <MinecraftXboxTrueHdBuild Condition="'$(MinecraftXboxTrueHdBuild)' == ''">false</MinecraftXboxTrueHdBuild>
+    <MinecraftXboxTrue1440pBuild Condition="'$(MinecraftXboxTrue1440pBuild)' == ''">false</MinecraftXboxTrue1440pBuild>
+    <MinecraftXboxTrue4KBuild Condition="'$(MinecraftXboxTrue4KBuild)' == ''">false</MinecraftXboxTrue4KBuild>
+    <MinecraftXboxTarget120FpsBuild Condition="'$(MinecraftXboxTarget120FpsBuild)' == ''">false</MinecraftXboxTarget120FpsBuild>
+    <MinecraftXboxDisableAccountSigninBuild Condition="'$(MinecraftXboxDisableAccountSigninBuild)' == ''">false</MinecraftXboxDisableAccountSigninBuild>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(MinecraftXboxTrueHdBuild)' == 'true'">
+    <ExtraPreprocessorDefinitions>$(ExtraPreprocessorDefinitions);MINECRAFT_XBOX_TRUE_HD_BUILD</ExtraPreprocessorDefinitions>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(MinecraftXboxTrue1440pBuild)' == 'true'">
+    <ExtraPreprocessorDefinitions>$(ExtraPreprocessorDefinitions);MINECRAFT_XBOX_TRUE_1440P_BUILD</ExtraPreprocessorDefinitions>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(MinecraftXboxTrue4KBuild)' == 'true'">
+    <ExtraPreprocessorDefinitions>$(ExtraPreprocessorDefinitions);MINECRAFT_XBOX_TRUE_4K_BUILD</ExtraPreprocessorDefinitions>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(MinecraftXboxTarget120FpsBuild)' == 'true'">
+    <ExtraPreprocessorDefinitions>$(ExtraPreprocessorDefinitions);MINECRAFT_XBOX_TARGET_120FPS_BUILD</ExtraPreprocessorDefinitions>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(MinecraftXboxDisableAccountSigninBuild)' == 'true'">
+    <ExtraPreprocessorDefinitions>$(ExtraPreprocessorDefinitions);MINECRAFT_XBOX_DISABLE_ACCOUNT_SIGNIN_BUILD</ExtraPreprocessorDefinitions>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(DownloadOnlyAssetObjectsOnFirstLaunch)' == 'true'">
+    <MinecraftPayloadFirstLaunchExclude>$(MinecraftPayloadRoot)\assets\objects\**\*.*;$(MinecraftPayloadRoot)\profiles\*\assets\objects\**\*.*</MinecraftPayloadFirstLaunchExclude>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(DownloadMinecraftFilesOnFirstLaunch)' == 'true' And '$(DownloadOnlyAssetObjectsOnFirstLaunch)' != 'true'">
+    <MinecraftPayloadFirstLaunchExclude>$(MinecraftPayloadRoot)\client.jar;$(MinecraftPayloadRoot)\libraries\**\*.*;$(MinecraftPayloadRoot)\assets\objects\**\*.*;$(MinecraftPayloadRoot)\profiles\*\client.jar;$(MinecraftPayloadRoot)\profiles\*\libraries\**\*.*;$(MinecraftPayloadRoot)\profiles\*\assets\objects\**\*.*</MinecraftPayloadFirstLaunchExclude>
+  </PropertyGroup>
+
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+
+  <PropertyGroup Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)'=='Debug'" Label="Configuration">
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)'=='Release'" Label="Configuration">
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings" />
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <PrecompiledHeaderOutputFile>$(IntDir)pch.pch</PrecompiledHeaderOutputFile>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <ConsumeWindowsRuntimeExtension>false</ConsumeWindowsRuntimeExtension>
+      <CompileAsWinRT>false</CompileAsWinRT>
+      <WarningLevel>Level4</WarningLevel>
+      <AdditionalOptions>%(AdditionalOptions) /bigobj</AdditionalOptions>
+      <PreprocessorDefinitions>WIN32_LEAN_AND_MEAN;WINRT_LEAN_AND_MEAN;NOMINMAX;%(PreprocessorDefinitions);$(TestFixesPreprocessorDefinitions);$(ExtraPreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+      <GenerateWindowsMetadata>false</GenerateWindowsMetadata>
+      <AdditionalDependencies>runtimeobject.lib;windowsapp.lib;bcrypt.lib;ws2_32.lib;iphlpapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
+    <ClCompile>
+      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Release'">
+    <ClCompile>
+      <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+    </Link>
+  </ItemDefinitionGroup>
+
+  <ItemGroup>
+    <ClInclude Include="pch.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="App.cpp" />
+    <ClCompile Include="pch.cpp">
+      <PrecompiledHeader>Create</PrecompiledHeader>
+    </ClCompile>
+  </ItemGroup>
+  <PropertyGroup Condition="'$(TestFixesBuild)'=='true'">
+    <TestFixesPreprocessorDefinitions>MINECRAFT_JAVA_TEST_FIXES</TestFixesPreprocessorDefinitions>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AppxManifest Include="Package.appxmanifest" Condition="'$(TestFixesBuild)'!='true'">
+      <SubType>Designer</SubType>
+    </AppxManifest>
+    <AppxManifest Include="Package.MinecraftJavaTestFixes.appxmanifest" Condition="'$(TestFixesBuild)'=='true'">
+      <SubType>Designer</SubType>
+    </AppxManifest>
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="..\..\src\BBCLauncher\Assets\SplashScreen.png">
+      <Link>Assets\SplashScreen.png</Link>
+    </Image>
+    <Image Include="..\..\src\BBCLauncher\Assets\Square150x150Logo.png">
+      <Link>Assets\Square150x150Logo.png</Link>
+    </Image>
+    <Image Include="..\..\src\BBCLauncher\Assets\Square44x44Logo.png">
+      <Link>Assets\Square44x44Logo.png</Link>
+    </Image>
+    <Image Include="..\..\src\BBCLauncher\Assets\StoreLogo.png">
+      <Link>Assets\StoreLogo.png</Link>
+    </Image>
+    <Image Include="..\..\src\BBCLauncher\Assets\Wide310x150Logo.png">
+      <Link>Assets\Wide310x150Logo.png</Link>
+    </Image>
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="..\XboxPathProbe.jar" Condition="Exists('..\XboxPathProbe.jar')">
+      <Link>native\XboxPathProbe.jar</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\Ole32.dll" Condition="Exists('..\Ole32.dll')">
+      <Link>native\Ole32.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\Pdh.dll" Condition="Exists('..\Pdh.dll')">
+      <Link>native\Pdh.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\xbox-jdk-patch.jar" Condition="Exists('..\xbox-jdk-patch.jar')">
+      <Link>native\xbox-jdk-patch.jar</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\xbox-lwjgl2-patch-agent.jar" Condition="Exists('..\xbox-lwjgl2-patch-agent.jar')">
+      <Link>native\xbox-lwjgl2-patch-agent.jar</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\xbox-modern-lan-agent.jar" Condition="Exists('..\xbox-modern-lan-agent.jar')">
+      <Link>native\xbox-modern-lan-agent.jar</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\xbox-lan-discovery-fabric.jar" Condition="Exists('..\xbox-lan-discovery-fabric.jar')">
+      <Link>native\xbox-lan-discovery-fabric.jar</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\xbox-glfw.dll" Condition="Exists('..\xbox-glfw.dll')">
+      <Link>native\xbox-glfw.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\xbox-openal.dll" Condition="Exists('..\xbox-openal.dll')">
+      <Link>native\xbox-openal.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\xbox-opengl.dll" Condition="Exists('..\xbox-opengl.dll')">
+      <Link>native\xbox-opengl.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\xbox-opengl.dll" Condition="Exists('..\xbox-opengl.dll')">
+      <Link>native\opengl32.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\graphics_bridge.dll" Condition="Exists('..\graphics_bridge.dll')">
+      <Link>native\graphics_bridge.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="$(MinecraftPayloadRoot)\native\*.dll"
+             Exclude="$(MinecraftPayloadRoot)\native\graphics_bridge.dll;$(MinecraftPayloadRoot)\native\xbox-*.dll"
+             Condition="'$(IncludeMinecraftPayload)' == 'true' And Exists('$(MinecraftPayloadRoot)\native')">
+      <Link>native\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\..\src\BBCLauncher\Resources\log4j2-xbox.xml" Condition="Exists('..\..\src\BBCLauncher\Resources\log4j2-xbox.xml')">
+      <Link>native\log4j2-xbox.xml</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\mesa-uwp\**\*.*" Condition="Exists('..\mesa-uwp')">
+      <Link>native\mesa-uwp\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="$(MinecraftPayloadRoot)\**\*.*"
+             Exclude="$(MinecraftPayloadRoot)\_downloads\**\*.*;$(MinecraftPayloadRoot)\native\**\*.*;$(MinecraftPayloadFirstLaunchExclude)"
+             Condition="'$(IncludeMinecraftPayload)' == 'true' And (Exists('$(MinecraftPayloadRoot)\client.jar') Or Exists('$(MinecraftPayloadRoot)\profiles'))">
+      <Link>LocalStatePayload\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <PRIResource>false</PRIResource>
+    </Content>
+  </ItemGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets" />
+</Project>

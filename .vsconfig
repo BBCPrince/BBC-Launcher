@@ -1,0 +1,11 @@
+{
+  "version": "1.0",
+  "components": [
+    "Microsoft.VisualStudio.Workload.Universal",
+    "Microsoft.VisualStudio.ComponentGroup.UWP.NETCore",
+    "Microsoft.VisualStudio.Component.Windows10SDK.22621",
+    "Microsoft.VisualStudio.Component.Windows10SDK.19041",
+    "Microsoft.Net.Component.4.8.SDK",
+    "Microsoft.Component.MSBuild"
+  ]
+}

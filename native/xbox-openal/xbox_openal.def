@@ -1,0 +1,85 @@
+; xbox_openal.def
+;
+; Export table for xbox-openal.dll.  All core AL / ALC entry points are
+; implemented bespoke in xbox_openal.cpp and exported via __declspec.  This
+; .def file is responsible for exposing the EFX (effects) and SOFT extension
+; symbols that LWJGL or anything else might GetProcAddress directly off the
+; DLL handle, aliasing them all to universal_no_op so the load never fails
+; due to missing exports.
+
+LIBRARY xbox-openal
+
+EXPORTS
+    ; --- EFX (AL_EXT_EFX) ----------------------------------------------------
+    alGenEffects=universal_no_op
+    alDeleteEffects=universal_no_op
+    alIsEffect=universal_no_op
+    alEffecti=universal_no_op
+    alEffectiv=universal_no_op
+    alEffectf=universal_no_op
+    alEffectfv=universal_no_op
+    alGetEffecti=universal_no_op
+    alGetEffectiv=universal_no_op
+    alGetEffectf=universal_no_op
+    alGetEffectfv=universal_no_op
+    alGenAuxiliaryEffectSlots=universal_no_op
+    alDeleteAuxiliaryEffectSlots=universal_no_op
+    alIsAuxiliaryEffectSlot=universal_no_op
+    alAuxiliaryEffectSloti=universal_no_op
+    alAuxiliaryEffectSlotiv=universal_no_op
+    alAuxiliaryEffectSlotf=universal_no_op
+    alAuxiliaryEffectSlotfv=universal_no_op
+    alGetAuxiliaryEffectSloti=universal_no_op
+    alGetAuxiliaryEffectSlotiv=universal_no_op
+    alGetAuxiliaryEffectSlotf=universal_no_op
+    alGetAuxiliaryEffectSlotfv=universal_no_op
+    alGenFilters=universal_no_op
+    alDeleteFilters=universal_no_op
+    alIsFilter=universal_no_op
+    alFilteri=universal_no_op
+    alFilteriv=universal_no_op
+    alFilterf=universal_no_op
+    alFilterfv=universal_no_op
+    alGetFilteri=universal_no_op
+    alGetFilteriv=universal_no_op
+    alGetFilterf=universal_no_op
+    alGetFilterfv=universal_no_op
+
+    ; --- AL_SOFT extensions Mojang commonly probes ---------------------------
+    alBufferSamplesSOFT=universal_no_op
+    alGetBufferSamplesSOFT=universal_no_op
+    alIsBufferFormatSupportedSOFT=universal_no_op
+    alSourcedSOFT=universal_no_op
+    alSource3dSOFT=universal_no_op
+    alSourcedvSOFT=universal_no_op
+    alGetSourcedSOFT=universal_no_op
+    alGetSource3dSOFT=universal_no_op
+    alGetSourcedvSOFT=universal_no_op
+    alSourcei64SOFT=universal_no_op
+    alSource3i64SOFT=universal_no_op
+    alSourcei64vSOFT=universal_no_op
+    alGetSourcei64SOFT=universal_no_op
+    alGetSource3i64SOFT=universal_no_op
+    alGetSourcei64vSOFT=universal_no_op
+    alDeferUpdatesSOFT=universal_no_op
+    alProcessUpdatesSOFT=universal_no_op
+    alGetStringiSOFT=universal_no_op
+    alBufferStorageSOFT=universal_no_op
+    alMapBufferSOFT=universal_no_op
+    alUnmapBufferSOFT=universal_no_op
+    alFlushMappedBufferSOFT=universal_no_op
+    alEventControlSOFT=universal_no_op
+    alEventCallbackSOFT=universal_no_op
+    alGetPointerSOFT=universal_no_op
+    alGetPointervSOFT=universal_no_op
+
+    ; --- ALC_SOFT extensions -------------------------------------------------
+    alcLoopbackOpenDeviceSOFT=universal_no_op
+    alcIsRenderFormatSupportedSOFT=universal_no_op
+    alcRenderSamplesSOFT=universal_no_op
+    alcDevicePauseSOFT=universal_no_op
+    alcDeviceResumeSOFT=universal_no_op
+    alcGetStringiSOFT=universal_no_op
+    alcResetDeviceSOFT=universal_no_op
+    alcGetInteger64vSOFT=universal_no_op
+    alcReopenDeviceSOFT=universal_no_op

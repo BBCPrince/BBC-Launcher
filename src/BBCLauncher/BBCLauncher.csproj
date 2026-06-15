@@ -1,0 +1,105 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <RootNamespace>BBCLauncher</RootNamespace>
+    <AssemblyName>BBCLauncher</AssemblyName>
+    <Nullable>disable</Nullable>
+    <UseUwp>true</UseUwp>
+    <Platforms>x86;x64;arm64</Platforms>
+    <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
+    <RuntimeIdentifier Condition="'$(Platform)' == 'x86'">win-x86</RuntimeIdentifier>
+    <RuntimeIdentifier Condition="'$(Platform)' == 'x64'">win-x64</RuntimeIdentifier>
+    <RuntimeIdentifier Condition="'$(Platform)' == 'arm64'">win-arm64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <UseAppHost>true</UseAppHost>
+    <DefaultLanguage>en-US</DefaultLanguage>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <GenerateAppxPackageOnBuild>true</GenerateAppxPackageOnBuild>
+    <AppxPackageSigningEnabled>false</AppxPackageSigningEnabled>
+    <PublishAot>false</PublishAot>
+    <IncludeMinecraftPayload Condition="'$(IncludeMinecraftPayload)' == ''">false</IncludeMinecraftPayload>
+    <IncludeMinecraftDownloadSeedPayload Condition="'$(IncludeMinecraftDownloadSeedPayload)' == ''">false</IncludeMinecraftDownloadSeedPayload>
+    <DefineConstants>$(DefineConstants);$(BuildVariant)</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Identity.Client" Version="4.66.2" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="MicrosoftGame.config" />
+    <Content Include="..\..\native\graphics_bridge.dll"
+             Condition="'$(Platform)' == 'x64' And Exists('..\..\native\graphics_bridge.dll')"
+             Link="native\graphics_bridge.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\..\native\Ole32.dll"
+             Condition="'$(Platform)' == 'x64' And Exists('..\..\native\Ole32.dll')"
+             Link="native\Ole32.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\..\native\Pdh.dll"
+             Condition="'$(Platform)' == 'x64' And Exists('..\..\native\Pdh.dll')"
+             Link="native\Pdh.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Resources\log4j2-xbox.xml"
+             Link="Resources\log4j2-xbox.xml">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\..\native\XboxPathProbe.jar"
+             Condition="Exists('..\..\native\XboxPathProbe.jar')"
+             Link="native\XboxPathProbe.jar">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\..\native\xbox-jdk-patch.jar"
+             Condition="Exists('..\..\native\xbox-jdk-patch.jar')"
+             Link="native\xbox-jdk-patch.jar">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\..\native\xbox-glfw.dll"
+             Condition="'$(Platform)' == 'x64' And Exists('..\..\native\xbox-glfw.dll')"
+             Link="native\xbox-glfw.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\..\native\xbox-opengl.dll"
+             Condition="'$(Platform)' == 'x64' And Exists('..\..\native\xbox-opengl.dll')"
+             Link="native\xbox-opengl.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\..\native\glon12\**\*.*"
+             Condition="'$(Platform)' == 'x64' And Exists('..\..\native\glon12')"
+             Link="native\glon12\%(RecursiveDir)%(Filename)%(Extension)">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\..\native\mesa-uwp\**\*.*"
+             Condition="'$(Platform)' == 'x64' And Exists('..\..\native\mesa-uwp')"
+             Link="native\mesa-uwp\%(RecursiveDir)%(Filename)%(Extension)">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\..\native\xbox-openal.dll"
+             Condition="'$(Platform)' == 'x64' And Exists('..\..\native\xbox-openal.dll')"
+             Link="native\xbox-openal.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="launcher.config.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\..\local-test-files\minecraft-localstate-payload.zip"
+             Condition="'$(IncludeMinecraftPayload)' == 'true' And Exists('..\..\local-test-files\minecraft-localstate-payload.zip')">
+      <Link>LocalStatePayload\minecraft-localstate-payload.zip</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <PRIResource>false</PRIResource>
+    </Content>
+    <Content Include="..\..\local-test-files\LocalState\**\*.*"
+             Exclude="..\..\local-test-files\LocalState\_downloads\**\*.*;..\..\local-test-files\LocalState\client.jar;..\..\local-test-files\LocalState\libraries\**\*.*;..\..\local-test-files\LocalState\assets\objects\**\*.*"
+             Condition="'$(IncludeMinecraftDownloadSeedPayload)' == 'true' And Exists('..\..\local-test-files\LocalState\download-manifest.json')">
+      <Link>LocalStatePayload\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <PRIResource>false</PRIResource>
+    </Content>
+  </ItemGroup>
+</Project>

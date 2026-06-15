@@ -1,0 +1,11 @@
+<!--
+    This file contains Runtime Directives used by .NET Native. The defaults here are suitable for
+    most developers. However, you can modify these parameters to affect the .NET Native runtime
+    behavior, such as whether .NET Native applies dynamic or static code analysis to the assemblies
+    in your app package.
+-->
+<Directives xmlns="http://schemas.microsoft.com/netfx/2013/01/metadata">
+  <Application>
+    <Assembly Name="*Application*" Dynamic="Required All" />
+  </Application>
+</Directives>

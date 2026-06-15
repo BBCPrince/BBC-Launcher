@@ -1,0 +1,48 @@
+﻿<Page
+    x:Class="BBCLauncher.ResolutionPickerPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Background="#1E1E1E">
+
+    <Grid Padding="48">
+        <StackPanel VerticalAlignment="Center" MaxWidth="900">
+            <TextBlock Text="Choose resolution"
+                       FontSize="42"
+                       Foreground="White"
+                       Margin="0,0,0,8" />
+            <TextBlock Text="Select the in-game render size before Minecraft launches."
+                       FontSize="18"
+                       Foreground="#AAAAAA"
+                       TextWrapping="WrapWholeWords"
+                       Margin="0,0,0,24" />
+
+            <ListView x:Name="ResolutionList"
+                      SelectionMode="Single"
+                      IsItemClickEnabled="True"
+                      ItemClick="OnResolutionItemClick"
+                      Margin="0,0,0,24">
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Padding="12">
+                            <TextBlock Text="{Binding Label}"
+                                       FontSize="28"
+                                       Foreground="White" />
+                            <TextBlock Text="{Binding Detail}"
+                                       FontSize="16"
+                                       Foreground="#888888" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+
+            <Button x:Name="ContinueButton"
+                    Content="Launch Minecraft"
+                    Click="OnContinueClick"
+                    HorizontalAlignment="Stretch"
+                    Height="56"
+                    FontSize="22"
+                    Background="#3D7E46"
+                    Foreground="White" />
+        </StackPanel>
+    </Grid>
+</Page>

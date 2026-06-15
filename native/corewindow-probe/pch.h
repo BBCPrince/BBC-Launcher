@@ -1,0 +1,32 @@
+#pragma once
+
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <iphlpapi.h>
+#include <windows.h>
+#include <algorithm>
+#include <atomic>
+#include <cstdio>
+#include <cstdlib>
+#include <cwchar>
+#include <functional>
+#include <string>
+#include <thread>
+#include <tuple>
+#include <vector>
+#include <bcrypt.h>
+
+#include <winrt/base.h>
+#include <winrt/Windows.ApplicationModel.h>
+#include <winrt/Windows.ApplicationModel.Core.h>
+#include <winrt/Windows.Data.Json.h>
+#include <winrt/Windows.Foundation.h>
+#include <winrt/Windows.Foundation.Collections.h>
+#include <winrt/Windows.Graphics.Display.h>
+#include <winrt/Windows.Security.Authentication.Web.h>
+#include <winrt/Windows.Storage.Streams.h>
+#include <winrt/Windows.Storage.h>
+#include <winrt/Windows.UI.Core.h>
+#include <winrt/Windows.UI.Popups.h>
+#include <winrt/Windows.UI.ViewManagement.h>
+#include <winrt/Windows.Web.Http.h>

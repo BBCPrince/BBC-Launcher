@@ -1,0 +1,13 @@
+{
+  "required": false,
+  "minVersion": "0.8",
+  "package": "com.minecraftxbox.lan.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "client": [
+    "LanServerDetectorMixin",
+    "LanServerListMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 0
+  }
+}
