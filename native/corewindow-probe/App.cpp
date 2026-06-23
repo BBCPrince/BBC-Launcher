@@ -9486,9 +9486,13 @@ static bool RunNativeMinecraft(CoreWindow const& window)
     bool cobblemonShowdownFsPatchEnabled =
         cobblemonStaged &&
         IsTruthyEnvironment(L"MINECRAFT_XBOX_COBBLEMON_SHOWDOWN_FS_PATCH", true);
+    bool fabricZipFsWritablePatchEnabled =
+        fabricProfile &&
+        IsTruthyEnvironment(L"MINECRAFT_XBOX_FABRIC_ZIPFS_WRITABLE_PATCH", true);
     bool modernPatchAgentRequested =
         modernLanAgentRequested ||
-        cobblemonShowdownFsPatchEnabled;
+        cobblemonShowdownFsPatchEnabled ||
+        fabricZipFsWritablePatchEnabled;
     if (!legacyMinecraftArgs && javaRuntimeMajor >= 9 && !modernLanAgent.empty() && modernPatchAgentRequested)
     {
         if (modernLanAgentRequested)
@@ -9499,11 +9503,16 @@ static bool RunNativeMinecraft(CoreWindow const& window)
         {
             optionText.emplace_back("-Dminecraft.xbox.cobblemon.showdownFsPatch=true");
         }
+        if (fabricZipFsWritablePatchEnabled)
+        {
+            optionText.emplace_back("-Dminecraft.xbox.zipfsWritablePatch=true");
+        }
         optionText.emplace_back(WideToUtf8(L"-javaagent:" + modernLanAgent));
         WriteLogF(
-            L"Modern patch javaagent enabled lanDiscovery=%d cobblemonShowdownFsPatch=%d",
+            L"Modern patch javaagent enabled lanDiscovery=%d cobblemonShowdownFsPatch=%d zipFsWritablePatch=%d",
             modernLanAgentRequested ? 1 : 0,
-            cobblemonShowdownFsPatchEnabled ? 1 : 0);
+            cobblemonShowdownFsPatchEnabled ? 1 : 0,
+            fabricZipFsWritablePatchEnabled ? 1 : 0);
     }
     else if (!legacyMinecraftArgs && javaRuntimeMajor >= 9 && !modernLanAgent.empty())
     {
