@@ -8621,6 +8621,9 @@ static void ResolveAutomaticLaunchResolution(CoreWindow const& window, std::wstr
 #elif defined(MINECRAFT_XBOX_TRUE_1440P_BUILD)
     LaunchResolutionPreset const& preset = PresetForLabel(L"1440p");
     wchar_t const* buildFlavor = L"TRUE_1440P";
+#elif defined(MINECRAFT_XBOX_TRUE_720P_BUILD)
+    LaunchResolutionPreset const& preset = PresetForLabel(L"720p");
+    wchar_t const* buildFlavor = L"TRUE_720P";
 #elif defined(MINECRAFT_XBOX_TRUE_HD_BUILD)
     LaunchResolutionPreset const& preset = PresetForLabel(L"1080p");
     wchar_t const* buildFlavor = L"TRUE_HD";

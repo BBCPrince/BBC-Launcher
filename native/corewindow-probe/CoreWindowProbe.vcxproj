@@ -23,11 +23,15 @@
     <DownloadMinecraftFilesOnFirstLaunch Condition="'$(DownloadMinecraftFilesOnFirstLaunch)' == ''">false</DownloadMinecraftFilesOnFirstLaunch>
     <DownloadOnlyAssetObjectsOnFirstLaunch Condition="'$(DownloadOnlyAssetObjectsOnFirstLaunch)' == ''">false</DownloadOnlyAssetObjectsOnFirstLaunch>
     <TestFixesBuild Condition="'$(TestFixesBuild)' == ''">false</TestFixesBuild>
+    <MinecraftXboxTrue720pBuild Condition="'$(MinecraftXboxTrue720pBuild)' == ''">false</MinecraftXboxTrue720pBuild>
     <MinecraftXboxTrueHdBuild Condition="'$(MinecraftXboxTrueHdBuild)' == ''">false</MinecraftXboxTrueHdBuild>
     <MinecraftXboxTrue1440pBuild Condition="'$(MinecraftXboxTrue1440pBuild)' == ''">false</MinecraftXboxTrue1440pBuild>
     <MinecraftXboxTrue4KBuild Condition="'$(MinecraftXboxTrue4KBuild)' == ''">false</MinecraftXboxTrue4KBuild>
     <MinecraftXboxTarget120FpsBuild Condition="'$(MinecraftXboxTarget120FpsBuild)' == ''">false</MinecraftXboxTarget120FpsBuild>
     <MinecraftXboxDisableAccountSigninBuild Condition="'$(MinecraftXboxDisableAccountSigninBuild)' == ''">false</MinecraftXboxDisableAccountSigninBuild>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(MinecraftXboxTrue720pBuild)' == 'true'">
+    <ExtraPreprocessorDefinitions>$(ExtraPreprocessorDefinitions);MINECRAFT_XBOX_TRUE_720P_BUILD</ExtraPreprocessorDefinitions>
   </PropertyGroup>
   <PropertyGroup Condition="'$(MinecraftXboxTrueHdBuild)' == 'true'">
     <ExtraPreprocessorDefinitions>$(ExtraPreprocessorDefinitions);MINECRAFT_XBOX_TRUE_HD_BUILD</ExtraPreprocessorDefinitions>
@@ -48,7 +52,7 @@
     <MinecraftPayloadFirstLaunchExclude>$(MinecraftPayloadRoot)\assets\objects\**\*.*;$(MinecraftPayloadRoot)\profiles\*\assets\objects\**\*.*</MinecraftPayloadFirstLaunchExclude>
   </PropertyGroup>
   <PropertyGroup Condition="'$(DownloadMinecraftFilesOnFirstLaunch)' == 'true' And '$(DownloadOnlyAssetObjectsOnFirstLaunch)' != 'true'">
-    <MinecraftPayloadFirstLaunchExclude>$(MinecraftPayloadRoot)\client.jar;$(MinecraftPayloadRoot)\libraries\**\*.*;$(MinecraftPayloadRoot)\assets\objects\**\*.*;$(MinecraftPayloadRoot)\profiles\*\client.jar;$(MinecraftPayloadRoot)\profiles\*\libraries\**\*.*;$(MinecraftPayloadRoot)\profiles\*\assets\objects\**\*.*</MinecraftPayloadFirstLaunchExclude>
+    <MinecraftPayloadFirstLaunchExclude>$(MinecraftPayloadRoot)\client.jar;$(MinecraftPayloadRoot)\libraries\**\*.*;$(MinecraftPayloadRoot)\assets\objects\**\*.*;$(MinecraftPayloadRoot)\versions\**\*.jar;$(MinecraftPayloadRoot)\mods-library\**\*.jar;$(MinecraftPayloadRoot)\game\**\*.jar;$(MinecraftPayloadRoot)\shared\classpath\**\*.*;$(MinecraftPayloadRoot)\profiles\*\client.jar;$(MinecraftPayloadRoot)\profiles\*\libraries\**\*.*;$(MinecraftPayloadRoot)\profiles\*\assets\objects\**\*.*;$(MinecraftPayloadRoot)\profiles\*\versions\**\*.jar;$(MinecraftPayloadRoot)\profiles\*\mods-library\**\*.jar;$(MinecraftPayloadRoot)\profiles\*\game\**\*.jar</MinecraftPayloadFirstLaunchExclude>
   </PropertyGroup>
 
   <ItemGroup Label="ProjectConfigurations">

@@ -6,6 +6,7 @@
     [switch]$DownloadMinecraftFilesOnFirstLaunch,
     [switch]$DownloadOnlyAssetObjectsOnFirstLaunch,
     [switch]$SkipNativeRebuild,
+    [switch]$True720pBuild,
     [switch]$TrueHdBuild,
     [switch]$True1440pBuild,
     [switch]$True4KBuild,
@@ -22,9 +23,12 @@ $ErrorActionPreference = "Stop"
 if ($DownloadMinecraftFilesOnFirstLaunch.IsPresent -and $DownloadOnlyAssetObjectsOnFirstLaunch.IsPresent) {
     throw "Use either -DownloadMinecraftFilesOnFirstLaunch or -DownloadOnlyAssetObjectsOnFirstLaunch, not both."
 }
-$resolutionBuildCount = @($TrueHdBuild, $True1440pBuild, $True4KBuild | Where-Object { $_.IsPresent }).Count
+$resolutionBuildCount = @($True720pBuild, $TrueHdBuild, $True1440pBuild, $True4KBuild) |
+    Where-Object { $_.IsPresent } |
+    Measure-Object |
+    Select-Object -ExpandProperty Count
 if ($resolutionBuildCount -gt 1) {
-    throw "Use only one of -TrueHdBuild, -True1440pBuild, or -True4KBuild."
+    throw "Use only one of -True720pBuild, -TrueHdBuild, -True1440pBuild, or -True4KBuild."
 }
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
@@ -163,6 +167,9 @@ $extraBuildProps = @()
 if (-not [string]::IsNullOrWhiteSpace($ExtraPreprocessorDefinitions)) {
     $escapedExtraPreprocessorDefinitions = $ExtraPreprocessorDefinitions -replace ';', '%3B'
     $extraBuildProps += "/p:ExtraPreprocessorDefinitions=$escapedExtraPreprocessorDefinitions"
+}
+if ($True720pBuild.IsPresent) {
+    $extraBuildProps += "/p:MinecraftXboxTrue720pBuild=true"
 }
 if ($TrueHdBuild.IsPresent) {
     $extraBuildProps += "/p:MinecraftXboxTrueHdBuild=true"

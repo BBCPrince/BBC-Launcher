@@ -147,6 +147,17 @@ Built packages are written under:
 artifacts\xbox\MinecraftJavaTestFixes\
 ```
 
+For public GitHub release packages, build the downloader variants instead of a full local payload package:
+
+```powershell
+.\scripts\Build-PublicReleaseVariants.ps1 `
+  -Configuration Release `
+  -PayloadRoot .\local-test-files\LocalState-MultiVersion-320Style `
+  -Target120FpsBuild
+```
+
+That creates 720p, 1080p, 1440p, and 4K MSIX files under `artifacts\xbox\PublicRelease`. The public build path uses first-launch downloads and excludes Minecraft client jars, asset objects, remap-cache jars, and bundled mod jars from the package. It still packages the Java runtimes because the current downloader manifest does not hydrate those files.
+
 The package project name may still say `CoreWindowProbe` or `MinecraftJavaTestFixes`. That is expected for this codebase. The user-facing display name is BBC Launcher.
 
 ## 9. Install the Test Certificate

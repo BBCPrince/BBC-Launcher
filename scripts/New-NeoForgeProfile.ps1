@@ -375,9 +375,10 @@ $downloadManifestOut = [ordered]@{
 }
 Write-Utf8NoBom -Path $manifestPath -Text (($downloadManifestOut | ConvertTo-Json -Depth 12) + "`r`n")
 
+$packagedVersion = if ($neoForgeArtifactId -eq "forge") { $neoForgeLauncherVersion } else { $profileId }
 $summaryPath = Join-Path $OutputRoot "staging-summary.json"
 $summary = Get-Content $summaryPath -Raw | ConvertFrom-Json
-$summary | Add-Member -NotePropertyName Version -NotePropertyValue $profileId -Force
+$summary | Add-Member -NotePropertyName Version -NotePropertyValue $packagedVersion -Force
 $summary | Add-Member -NotePropertyName DisplayName -NotePropertyValue "$MinecraftVersion $loaderName" -Force
 $summary | Add-Member -NotePropertyName BaseMinecraftVersion -NotePropertyValue $MinecraftVersion -Force
 $summary | Add-Member -NotePropertyName OutputRoot -NotePropertyValue $OutputRoot -Force
@@ -397,6 +398,6 @@ Write-Host ""
 Write-Host "$loaderName profile staged:"
 Write-Host "  $OutputRoot"
 Write-Host "Minecraft: $MinecraftVersion"
-Write-Host "$loaderName: $NeoForgeVersion"
+Write-Host "${loaderName}: $NeoForgeVersion"
 Write-Host "Profile: $profileId"
 Write-Host "$loaderName libraries: $($neoForgeLibraries.Count)"
