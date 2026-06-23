@@ -32,6 +32,21 @@ if (-not $ProfileRoots -or $ProfileRoots.Count -eq 0) {
     if (Test-Path $neoForge1211) {
         $defaultProfileRoots.Add($neoForge1211)
     }
+
+    $fabric1201 = Join-Path $repoRoot "local-test-files\LocalState-1.20.1-Fabric"
+    if (Test-Path $fabric1201) {
+        $defaultProfileRoots.Add($fabric1201)
+    }
+
+    $forge1201 = Join-Path $repoRoot "local-test-files\LocalState-1.20.1-Forge"
+    $neoForge1201 = Join-Path $repoRoot "local-test-files\LocalState-1.20.1-NeoForge"
+    if (Test-Path $forge1201) {
+        $defaultProfileRoots.Add($forge1201)
+    }
+    elseif (Test-Path $neoForge1201) {
+        $defaultProfileRoots.Add($neoForge1201)
+    }
+
     $defaultProfileRoots.Add($profile12111)
 
     $forge1122 = Join-Path $repoRoot "local-test-files\LocalState-1.12.2-Forge"
@@ -178,14 +193,14 @@ function Test-NeoForgeGeneratedClientJar {
     param([string]$RelativePath)
 
     $normalized = $RelativePath.Replace("/", "\")
-    return $normalized -match '^libraries\\net\\neoforged\\neoforge\\[^\\]+\\neoforge-[^\\]+-client\.jar$'
+    return $normalized -match '^libraries\\net\\neoforged\\(neoforge|forge)\\[^\\]+\\(neoforge|forge)-[^\\]+-client\.jar$'
 }
 
 function Test-NeoForgeUniversalJar {
     param([string]$RelativePath)
 
     $normalized = $RelativePath.Replace("/", "\")
-    return $normalized -match '^libraries\\net\\neoforged\\neoforge\\[^\\]+\\neoforge-[^\\]+-universal\.jar$'
+    return $normalized -match '^libraries\\net\\neoforged\\(neoforge|forge)\\[^\\]+\\(neoforge|forge)-[^\\]+-universal\.jar$'
 }
 
 function Test-NeoForgeProfileRoot {
@@ -198,7 +213,16 @@ function Test-NeoForgeProfileRoot {
 
     $summary = Get-Content $summaryPath -Raw | ConvertFrom-Json
     $modLoader = [string]$summary.ModLoader
-    return $modLoader.IndexOf("neoforge", [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+    $mainClass = [string]$summary.MainClass
+    $artifactId = [string]$summary.NeoForgeArtifactId
+    if ($modLoader.IndexOf("neoforge", [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
+        return $true
+    }
+
+    return $modLoader.IndexOf("forge", [System.StringComparison]::OrdinalIgnoreCase) -ge 0 -and (
+        $mainClass.IndexOf("bootstraplauncher", [System.StringComparison]::OrdinalIgnoreCase) -ge 0 -or
+        $artifactId.IndexOf("forge", [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+    )
 }
 
 function New-ProfileClasspath {

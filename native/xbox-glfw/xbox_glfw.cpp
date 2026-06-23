@@ -55,6 +55,7 @@
 #include <cstdlib>
 #include <cwchar>
 #include <atomic>
+#include <cmath>
 #include <mutex>
 
 using Microsoft::WRL::ComPtr;
@@ -212,6 +213,27 @@ static bool QueryEnvironmentInt(const wchar_t* name, int& value) {
     return true;
 }
 
+static double QueryEnvironmentDouble(const wchar_t* name, double fallback, double minValue, double maxValue) {
+    wchar_t buffer[64] = {};
+    DWORD length = GetEnvironmentVariableW(name, buffer, static_cast<DWORD>(std::size(buffer)));
+    if (length == 0 || length >= std::size(buffer)) {
+        return fallback;
+    }
+
+    wchar_t* end = nullptr;
+    double parsed = std::wcstod(buffer, &end);
+    if (end == buffer) {
+        return fallback;
+    }
+    if (parsed < minValue) {
+        return minValue;
+    }
+    if (parsed > maxValue) {
+        return maxValue;
+    }
+    return parsed;
+}
+
 static const int kDefaultRefresh = 60;
 static const char* kMonitorName = "Xbox Display";
 static const char* kVersionString = "3.3.8 Xbox-gles-runtime-1.0.123";
@@ -350,12 +372,20 @@ static std::atomic<int> g_window_hint_context_major{ 3 };
 static std::atomic<int> g_window_hint_context_minor{ 2 };
 static std::atomic<unsigned char> g_keyStates[GLFW_KEY_LAST + 1] = {};
 static std::atomic<unsigned char> g_mouseButtonStates[GLFW_MOUSE_BUTTON_LAST + 1] = {};
+static std::atomic<unsigned long long> g_recentTextInputTickMs{ 0 };
+static std::atomic<int> g_guiInputGuardLogCount{ 0 };
+static std::atomic<int> g_guiInputGuardGamepadAcceptLatch{ 0 };
+static std::atomic<int> g_guiInputFatalLoggingArmed{ 0 };
+static std::atomic<int> g_guiInputFatalLogCount{ 0 };
 
 static LARGE_INTEGER g_qpcFreq;
 static LARGE_INTEGER g_qpcStart;
 static double g_timeOffset = 0.0;
 
 namespace {
+    static bool IsRecentTextInputAcceptGuardActive();
+    static void LogGuiInputGuard(const char* reason, int keyOrButton, int value, int released);
+
     static HMODULE g_openGlModule = nullptr;
     static HDC g_wglDc = nullptr;
     static HBITMAP g_wglBitmap = nullptr;
@@ -960,6 +990,61 @@ namespace {
         return static_cast<float>(value);
     }
 
+    static double QueryGamepadStickDeadzone() {
+        static std::atomic<int> cachedDeadzonePermille{ -1 };
+        int cached = cachedDeadzonePermille.load(std::memory_order_acquire);
+        if (cached >= 0) {
+            return static_cast<double>(cached) / 1000.0;
+        }
+
+        double value = QueryEnvironmentDouble(L"MINECRAFT_XBOX_GAMEPAD_STICK_DEADZONE", 0.22, 0.02, 0.65);
+        int permille = static_cast<int>((value * 1000.0) + 0.5);
+        cachedDeadzonePermille.store(permille, std::memory_order_release);
+        return static_cast<double>(permille) / 1000.0;
+    }
+
+    static void ApplyStickDeadzone(double rawX, double rawY, double deadzone, float& outX, float& outY) {
+        double x = std::max(-1.0, std::min(1.0, rawX));
+        double y = std::max(-1.0, std::min(1.0, rawY));
+        double magnitude = std::sqrt((x * x) + (y * y));
+        if (magnitude <= deadzone || magnitude <= 0.000001) {
+            outX = 0.0f;
+            outY = 0.0f;
+            return;
+        }
+
+        if (magnitude > 1.0) {
+            x /= magnitude;
+            y /= magnitude;
+            magnitude = 1.0;
+        }
+
+        double scaled = (magnitude - deadzone) / (1.0 - deadzone);
+        outX = ClampAxis((x / magnitude) * scaled);
+        outY = ClampAxis((y / magnitude) * scaled);
+    }
+
+    static void ApplyRecentTextGamepadAcceptGuard(GLFWgamepadstate& state) {
+        const bool pressed = state.buttons[GLFW_GAMEPAD_BUTTON_A] == GLFW_PRESS;
+        if (!IsRecentTextInputAcceptGuardActive()) {
+            if (!pressed) {
+                g_guiInputGuardGamepadAcceptLatch.store(0, std::memory_order_release);
+            }
+            return;
+        }
+
+        if (!pressed) {
+            g_guiInputGuardGamepadAcceptLatch.store(0, std::memory_order_release);
+            return;
+        }
+
+        const int previous = g_guiInputGuardGamepadAcceptLatch.exchange(1, std::memory_order_acq_rel);
+        state.buttons[GLFW_GAMEPAD_BUTTON_A] = GLFW_RELEASE;
+        if (previous == 0) {
+            LogGuiInputGuard("gamepad-accept-release", GLFW_GAMEPAD_BUTTON_A, 1, 1);
+        }
+    }
+
     static void FillGlfwGamepadState(GLFWgamepadstate& state, GamepadReading const& reading) {
         memset(&state, 0, sizeof(state));
 
@@ -978,12 +1063,23 @@ namespace {
         state.buttons[GLFW_GAMEPAD_BUTTON_DPAD_DOWN] = HasButton(reading.Buttons, GamepadButtons_DPadDown) ? GLFW_PRESS : GLFW_RELEASE;
         state.buttons[GLFW_GAMEPAD_BUTTON_DPAD_LEFT] = HasButton(reading.Buttons, GamepadButtons_DPadLeft) ? GLFW_PRESS : GLFW_RELEASE;
 
-        state.axes[GLFW_GAMEPAD_AXIS_LEFT_X] = ClampAxis(reading.LeftThumbstickX);
-        state.axes[GLFW_GAMEPAD_AXIS_LEFT_Y] = ClampAxis(-reading.LeftThumbstickY);
-        state.axes[GLFW_GAMEPAD_AXIS_RIGHT_X] = ClampAxis(reading.RightThumbstickX);
-        state.axes[GLFW_GAMEPAD_AXIS_RIGHT_Y] = ClampAxis(-reading.RightThumbstickY);
+        const double stickDeadzone = QueryGamepadStickDeadzone();
+        ApplyStickDeadzone(
+            reading.LeftThumbstickX,
+            -reading.LeftThumbstickY,
+            stickDeadzone,
+            state.axes[GLFW_GAMEPAD_AXIS_LEFT_X],
+            state.axes[GLFW_GAMEPAD_AXIS_LEFT_Y]);
+        ApplyStickDeadzone(
+            reading.RightThumbstickX,
+            -reading.RightThumbstickY,
+            stickDeadzone,
+            state.axes[GLFW_GAMEPAD_AXIS_RIGHT_X],
+            state.axes[GLFW_GAMEPAD_AXIS_RIGHT_Y]);
         state.axes[GLFW_GAMEPAD_AXIS_LEFT_TRIGGER] = ClampAxis((reading.LeftTrigger * 2.0) - 1.0);
         state.axes[GLFW_GAMEPAD_AXIS_RIGHT_TRIGGER] = ClampAxis((reading.RightTrigger * 2.0) - 1.0);
+
+        ApplyRecentTextGamepadAcceptGuard(state);
     }
 
     static bool IsGamepadMouseModeActive() {
@@ -1098,6 +1194,34 @@ namespace {
         }
     }
 
+    static void FormatAddressModule(void* address, char* buffer, size_t bufferSize) {
+        if (!buffer || bufferSize == 0) {
+            return;
+        }
+
+        buffer[0] = '\0';
+        if (!address) {
+            std::snprintf(buffer, bufferSize, "null");
+            return;
+        }
+
+        MEMORY_BASIC_INFORMATION memoryInfo = {};
+        if (VirtualQuery(address, &memoryInfo, sizeof(memoryInfo)) == 0 || !memoryInfo.AllocationBase) {
+            std::snprintf(buffer, bufferSize, "%p module=<unknown>", address);
+            return;
+        }
+
+        char modulePath[MAX_PATH] = {};
+        DWORD length = GetModuleFileNameA(reinterpret_cast<HMODULE>(memoryInfo.AllocationBase), modulePath, static_cast<DWORD>(sizeof(modulePath) / sizeof(modulePath[0])));
+        const uintptr_t offset = reinterpret_cast<uintptr_t>(address) - reinterpret_cast<uintptr_t>(memoryInfo.AllocationBase);
+        if (length == 0 || length >= (sizeof(modulePath) / sizeof(modulePath[0]))) {
+            std::snprintf(buffer, bufferSize, "%p moduleBase=%p+0x%llX", address, memoryInfo.AllocationBase, static_cast<unsigned long long>(offset));
+            return;
+        }
+
+        std::snprintf(buffer, bufferSize, "%p %s+0x%llX", address, modulePath, static_cast<unsigned long long>(offset));
+    }
+
     static LONG WINAPI NativeFatalExceptionLogger(PEXCEPTION_POINTERS info) {
         if (!info || !info->ExceptionRecord) {
             return EXCEPTION_CONTINUE_SEARCH;
@@ -1108,30 +1232,75 @@ namespace {
             return EXCEPTION_CONTINUE_SEARCH;
         }
 
-        static volatile LONG logged = 0;
-        if (InterlockedExchange(&logged, 1) == 0) {
+        static volatile LONG loggedCount = 0;
+        const LONG eventIndex = InterlockedIncrement(&loggedCount);
+        const bool postGuiInput = g_guiInputFatalLoggingArmed.load(std::memory_order_acquire) != 0;
+        int postGuiEventIndex = 0;
+        if (postGuiInput) {
+            postGuiEventIndex = g_guiInputFatalLogCount.fetch_add(1, std::memory_order_acq_rel) + 1;
+        }
+
+        if (eventIndex <= 8 || (postGuiInput && postGuiEventIndex <= 64)) {
             const ULONG_PTR p0 = info->ExceptionRecord->NumberParameters > 0
                 ? info->ExceptionRecord->ExceptionInformation[0]
                 : 0;
             const ULONG_PTR p1 = info->ExceptionRecord->NumberParameters > 1
                 ? info->ExceptionRecord->ExceptionInformation[1]
                 : 0;
+            char exceptionAddress[760] = {};
+            char accessAddress[760] = {};
+            FormatAddressModule(info->ExceptionRecord->ExceptionAddress, exceptionAddress, sizeof(exceptionAddress));
+            FormatAddressModule(reinterpret_cast<void*>(p1), accessAddress, sizeof(accessAddress));
             char line[320] = {};
             std::snprintf(
                 line,
                 sizeof(line),
-                "native fatal exception code=0x%08lX address=%p info0=0x%llX info1=0x%llX",
+                "native fatal exception #%ld gui#%d code=0x%08lX address=%p info0=0x%llX info1=0x%llX",
+                eventIndex,
+                postGuiEventIndex,
                 code,
                 info->ExceptionRecord->ExceptionAddress,
                 static_cast<unsigned long long>(p0),
                 static_cast<unsigned long long>(p1));
             DebugLine(line);
+
+            char moduleLine[1600] = {};
+            std::snprintf(
+                moduleLine,
+                sizeof(moduleLine),
+                "native fatal exception #%ld gui#%d module address=%s access=%s",
+                eventIndex,
+                postGuiEventIndex,
+                exceptionAddress,
+                accessAddress);
+            DebugLine(moduleLine);
+
+            void* stack[16] = {};
+            USHORT frames = CaptureStackBackTrace(0, static_cast<DWORD>(sizeof(stack) / sizeof(stack[0])), stack, nullptr);
+            for (USHORT i = 0; i < frames && i < 10; ++i) {
+                char frameAddress[760] = {};
+                FormatAddressModule(stack[i], frameAddress, sizeof(frameAddress));
+                char stackLine[900] = {};
+                std::snprintf(
+                    stackLine,
+                    sizeof(stackLine),
+                    "native fatal exception #%ld gui#%d stack[%u]=%s",
+                    eventIndex,
+                    postGuiEventIndex,
+                    static_cast<unsigned int>(i),
+                    frameAddress);
+                DebugLine(stackLine);
+            }
         }
 
         return EXCEPTION_CONTINUE_SEARCH;
     }
 
     static void InstallNativeFatalExceptionLogger() {
+        if (!IsTruthyEnvironment(L"MINECRAFT_XBOX_ENABLE_NATIVE_EXCEPTION_LOG")) {
+            return;
+        }
+
         static volatile LONG installed = 0;
         if (InterlockedCompareExchange(&installed, 1, 0) == 0) {
             AddVectoredExceptionHandler(1, NativeFatalExceptionLogger);
@@ -2158,6 +2327,122 @@ static std::atomic<int> g_mouseEventLogCount{ 0 };
         return mods;
     }
 
+    static bool IsGuiInputGuardDisabled() {
+        return !IsTruthyEnvironment(L"MINECRAFT_XBOX_ENABLE_GUI_INPUT_GUARD") ||
+            IsTruthyEnvironment(L"MINECRAFT_XBOX_DISABLE_GUI_INPUT_GUARD");
+    }
+
+    static unsigned int QueryGuiInputGuardWindowMs() {
+        int value = 0;
+        if (QueryEnvironmentInt(L"MINECRAFT_XBOX_GUI_INPUT_GUARD_MS", value)) {
+            if (value < 250) {
+                return 250;
+            }
+            if (value > 10000) {
+                return 10000;
+            }
+            return static_cast<unsigned int>(value);
+        }
+        return 3500;
+    }
+
+    static unsigned int QueryGuiInputAcceptGuardWindowMs() {
+        int value = 0;
+        if (QueryEnvironmentInt(L"MINECRAFT_XBOX_GUI_ACCEPT_GUARD_MS", value)) {
+            if (value < 250) {
+                return 250;
+            }
+            if (value > 10000) {
+                return 10000;
+            }
+            return static_cast<unsigned int>(value);
+        }
+        return QueryGuiInputGuardWindowMs();
+    }
+
+    static bool IsRecentTextInputActive() {
+        if (IsGuiInputGuardDisabled()) {
+            return false;
+        }
+
+        unsigned long long lastTick = g_recentTextInputTickMs.load(std::memory_order_acquire);
+        if (lastTick == 0) {
+            return false;
+        }
+
+        unsigned long long now = GetTickCount64();
+        return now >= lastTick && (now - lastTick) <= QueryGuiInputGuardWindowMs();
+    }
+
+    static bool IsRecentTextInputAcceptGuardActive() {
+        if (IsGuiInputGuardDisabled()) {
+            return false;
+        }
+
+        unsigned long long lastTick = g_recentTextInputTickMs.load(std::memory_order_acquire);
+        if (lastTick == 0) {
+            return false;
+        }
+
+        unsigned long long now = GetTickCount64();
+        return now >= lastTick && (now - lastTick) <= QueryGuiInputAcceptGuardWindowMs();
+    }
+
+    static bool IsGuiInputGuardKey(int key) {
+        switch (key) {
+        case GLFW_KEY_LEFT_SHIFT:
+        case GLFW_KEY_RIGHT_SHIFT:
+        case GLFW_KEY_LEFT_CONTROL:
+        case GLFW_KEY_RIGHT_CONTROL:
+        case GLFW_KEY_LEFT_ALT:
+        case GLFW_KEY_RIGHT_ALT:
+        case GLFW_KEY_LEFT_SUPER:
+        case GLFW_KEY_RIGHT_SUPER:
+        case GLFW_KEY_ENTER:
+        case GLFW_KEY_ESCAPE:
+        case GLFW_KEY_UP:
+        case GLFW_KEY_DOWN:
+        case GLFW_KEY_LEFT:
+        case GLFW_KEY_RIGHT:
+        case GLFW_KEY_Q:
+        case GLFW_KEY_F:
+            return true;
+        default:
+            return false;
+        }
+    }
+
+    static int ClearGuiInputGuardKeyStates() {
+        int released = 0;
+        for (int key = 0; key <= GLFW_KEY_LAST; ++key) {
+            if (!IsGuiInputGuardKey(key)) {
+                continue;
+            }
+            unsigned char previous = g_keyStates[key].exchange(GLFW_RELEASE, std::memory_order_acq_rel);
+            if (previous == GLFW_PRESS) {
+                ++released;
+            }
+        }
+        return released;
+    }
+
+    static void LogGuiInputGuard(const char* reason, int keyOrButton, int value, int released) {
+        const int logCount = g_guiInputGuardLogCount.fetch_add(1, std::memory_order_relaxed) + 1;
+        if (logCount <= 96 || (logCount % 300) == 0) {
+            char line[224] = {};
+            std::snprintf(
+                line,
+                sizeof(line),
+                "GUI input guard %s id=%d value=%d released=%d windowMs=%u",
+                reason ? reason : "event",
+                keyOrButton,
+                value,
+                released,
+                QueryGuiInputGuardWindowMs());
+            DebugLine(line);
+        }
+    }
+
     static bool IsCoreWindowGamepadVirtualKey(VirtualKey virtualKey) {
         const int vk = static_cast<int>(virtualKey);
         return (vk >= 138 && vk <= 143) || // NavigationUp..NavigationCancel
@@ -2178,7 +2463,7 @@ static std::atomic<int> g_mouseEventLogCount{ 0 };
     }
 
     static bool ShouldSuppressCoreWindowGamepadKeyboardEvent(VirtualKey virtualKey) {
-        return (IsGamepadKeyboardBridgeDisabled() || IsGamepadMouseModeActive()) &&
+        return (IsGamepadKeyboardBridgeDisabled() || IsGamepadMouseModeActive() || IsRecentTextInputActive()) &&
             IsCoreWindowGamepadVirtualKey(virtualKey);
     }
 
@@ -2399,13 +2684,18 @@ static std::atomic<int> g_mouseEventLogCount{ 0 };
     }
 
     static void DispatchMouseButtons(MousePointerSample const& sample) {
-        const int mods = CurrentKeyboardModsFromState();
+        const bool guardActive = IsRecentTextInputActive();
+        const int released = guardActive ? ClearGuiInputGuardKeyStates() : 0;
+        const int mods = guardActive ? 0 : CurrentKeyboardModsFromState();
         GLFWmousebuttonfun callback = g_window.cbMouseButton;
         for (int button = 0; button <= GLFW_MOUSE_BUTTON_LAST; ++button) {
             unsigned char next = sample.buttons[button];
             unsigned char previous = g_mouseButtonStates[button].exchange(next, std::memory_order_acq_rel);
             if (previous == next) {
                 continue;
+            }
+            if (guardActive && next == GLFW_PRESS) {
+                LogGuiInputGuard("plain-mouse-press", button, mods, released);
             }
             if (callback && g_window_created.load(std::memory_order_acquire)) {
                 callback(kPrimaryWindow, button, next == GLFW_PRESS ? GLFW_PRESS : GLFW_RELEASE, mods);
@@ -2428,8 +2718,19 @@ static std::atomic<int> g_mouseEventLogCount{ 0 };
         }
     }
 
-    static double ApplyGamepadMouseDeadzone(double value) {
-        const double deadzone = 0.16;
+    static double QueryGamepadMouseSpeedScale() {
+        return QueryEnvironmentDouble(L"MINECRAFT_XBOX_GAMEPAD_MOUSE_SPEED", 0.38, 0.05, 2.0);
+    }
+
+    static double QueryGamepadMouseDeadzone() {
+        return QueryEnvironmentDouble(L"MINECRAFT_XBOX_GAMEPAD_MOUSE_DEADZONE", 0.18, 0.02, 0.65);
+    }
+
+    static double QueryGamepadMouseRightStickScale() {
+        return QueryEnvironmentDouble(L"MINECRAFT_XBOX_GAMEPAD_MOUSE_RIGHT_STICK", 0.45, 0.0, 1.0);
+    }
+
+    static double ApplyGamepadMouseDeadzone(double value, double deadzone) {
         double magnitude = value < 0.0 ? -value : value;
         if (magnitude <= deadzone) {
             return 0.0;
@@ -2490,16 +2791,19 @@ static std::atomic<int> g_mouseEventLogCount{ 0 };
             cursorY = targetHeight * 0.5;
         }
 
-        double xAxis = ApplyGamepadMouseDeadzone(reading.LeftThumbstickX);
-        double yAxis = ApplyGamepadMouseDeadzone(-reading.LeftThumbstickY);
-        xAxis += ApplyGamepadMouseDeadzone(reading.RightThumbstickX) * 0.75;
-        yAxis += ApplyGamepadMouseDeadzone(-reading.RightThumbstickY) * 0.75;
+        const double mouseSpeedScale = QueryGamepadMouseSpeedScale();
+        const double mouseDeadzone = QueryGamepadMouseDeadzone();
+        const double rightStickScale = QueryGamepadMouseRightStickScale();
+        double xAxis = ApplyGamepadMouseDeadzone(reading.LeftThumbstickX, mouseDeadzone);
+        double yAxis = ApplyGamepadMouseDeadzone(-reading.LeftThumbstickY, mouseDeadzone);
+        xAxis += ApplyGamepadMouseDeadzone(reading.RightThumbstickX, mouseDeadzone) * rightStickScale;
+        yAxis += ApplyGamepadMouseDeadzone(-reading.RightThumbstickY, mouseDeadzone) * rightStickScale;
         if (xAxis > 1.0) xAxis = 1.0;
         if (xAxis < -1.0) xAxis = -1.0;
         if (yAxis > 1.0) yAxis = 1.0;
         if (yAxis < -1.0) yAxis = -1.0;
 
-        const double baseSpeed = (std::max)(targetWidth, targetHeight) * 0.85;
+        const double baseSpeed = (std::max)(targetWidth, targetHeight) * mouseSpeedScale;
         cursorX += xAxis * baseSpeed * deltaSeconds;
         cursorY += yAxis * baseSpeed * deltaSeconds;
         if (cursorX < 0.0) cursorX = 0.0;
@@ -2539,15 +2843,18 @@ static std::atomic<int> g_mouseEventLogCount{ 0 };
 
         const int logCount = g_gamepadMouseEventLogCount.fetch_add(1, std::memory_order_relaxed) + 1;
         if (toggled || logCount <= 16 || (logCount % 300) == 0) {
-            char line[224] = {};
+            char line[288] = {};
             std::snprintf(
                 line,
                 sizeof(line),
-                "Controller mouse mode tick x=%.1f y=%.1f axis=%.2f/%.2f buttons=%d%d%d wheel=%d callback=%d/%d/%d",
+                "Controller mouse mode tick x=%.1f y=%.1f axis=%.2f/%.2f speed=%.2f deadzone=%.2f right=%.2f buttons=%d%d%d wheel=%d callback=%d/%d/%d",
                 sample.x,
                 sample.y,
                 xAxis,
                 yAxis,
+                mouseSpeedScale,
+                mouseDeadzone,
+                rightStickScale,
                 sample.buttons[GLFW_MOUSE_BUTTON_LEFT] == GLFW_PRESS ? 1 : 0,
                 sample.buttons[GLFW_MOUSE_BUTTON_RIGHT] == GLFW_PRESS ? 1 : 0,
                 sample.buttons[GLFW_MOUSE_BUTTON_MIDDLE] == GLFW_PRESS ? 1 : 0,
@@ -2655,14 +2962,42 @@ static std::atomic<int> g_mouseEventLogCount{ 0 };
             return;
         }
 
+        if (!IsGuiInputGuardDisabled()) {
+            g_recentTextInputTickMs.store(GetTickCount64(), std::memory_order_release);
+            g_guiInputGuardGamepadAcceptLatch.store(0, std::memory_order_release);
+            LogGuiInputGuard("text-input", static_cast<int>(codepoint), 0, 0);
+        }
+        if (IsTruthyEnvironment(L"MINECRAFT_XBOX_ENABLE_NATIVE_EXCEPTION_LOG")) {
+            g_guiInputFatalLoggingArmed.store(1, std::memory_order_release);
+            g_guiInputFatalLogCount.store(0, std::memory_order_release);
+        }
+
         GLFWcharfun charCallback = g_window.cbChar;
+        const int logCount = g_keyboardEventLogCount.fetch_add(1, std::memory_order_relaxed) + 1;
+        if (logCount <= 96 || (logCount % 300) == 0) {
+            char line[192] = {};
+            std::snprintf(
+                line,
+                sizeof(line),
+                "CoreWindow char begin codepoint=%u charCallback=%d charModsCallback=%d",
+                codepoint,
+                charCallback ? 1 : 0,
+                g_window.cbCharMods ? 1 : 0);
+            DebugLine(line);
+        }
         if (charCallback && g_window_created.load(std::memory_order_acquire)) {
             charCallback(kPrimaryWindow, codepoint);
+        }
+        if (logCount <= 96 || (logCount % 300) == 0) {
+            DebugLine("CoreWindow char callback returned");
         }
 
         GLFWcharmodsfun charModsCallback = g_window.cbCharMods;
         if (charModsCallback && g_window_created.load(std::memory_order_acquire)) {
             charModsCallback(kPrimaryWindow, codepoint, CurrentKeyboardModsFromState());
+        }
+        if (logCount <= 96 || (logCount % 300) == 0) {
+            DebugLine("CoreWindow char dispatch complete");
         }
     }
 
@@ -6311,9 +6646,18 @@ XGLFW_API int  glfwRawMouseMotionSupported(void) { return GLFW_FALSE; }
 XGLFW_API const char* glfwGetKeyName(int, int) { return nullptr; }
 XGLFW_API int  glfwGetKeyScancode(int key) { return key; }
 XGLFW_API int  glfwGetKey(GLFWwindow*, int key) {
-    return IsGlfwKeyIndex(key)
-        ? static_cast<int>(g_keyStates[key].load(std::memory_order_acquire))
-        : GLFW_RELEASE;
+    if (!IsGlfwKeyIndex(key)) {
+        return GLFW_RELEASE;
+    }
+
+    int value = static_cast<int>(g_keyStates[key].load(std::memory_order_acquire));
+    if (value != GLFW_RELEASE && IsRecentTextInputActive() && IsGuiInputGuardKey(key)) {
+        g_keyStates[key].store(GLFW_RELEASE, std::memory_order_release);
+        LogGuiInputGuard("glfwGetKey-release", key, value, 1);
+        return GLFW_RELEASE;
+    }
+
+    return value;
 }
 XGLFW_API int  glfwGetMouseButton(GLFWwindow*, int button) {
     return IsGlfwMouseButtonIndex(button)

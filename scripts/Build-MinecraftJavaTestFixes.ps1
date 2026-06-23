@@ -11,6 +11,7 @@
     [switch]$True4KBuild,
     [switch]$Target120FpsBuild,
     [switch]$DisableAccountSigninBuild,
+    [switch]$DiagnosticMsbuildLog,
     [string]$ExtraPreprocessorDefinitions,
     [string]$CertificateSubject = "CN=Developer",
     [string]$CertificatePassword = "BBCLauncherTest!"
@@ -125,7 +126,8 @@ if (-not $SkipNativeRebuild) {
 }
 
 $jdkPatchJar = Join-Path $repoRoot "native\xbox-jdk-patch.jar"
-if (-not (Test-Path $jdkPatchJar)) {
+$jdkLinkPatchJar = Join-Path $repoRoot "native\xbox-jdk-link-patch.jar"
+if (-not (Test-Path $jdkPatchJar) -or -not (Test-Path $jdkLinkPatchJar)) {
     Write-Host "Building JDK path patch..."
     & (Join-Path $PSScriptRoot "Build-JdkPatch.ps1")
     if ($LASTEXITCODE -ne 0) {
@@ -178,21 +180,40 @@ if ($DisableAccountSigninBuild.IsPresent) {
     $extraBuildProps += "/p:MinecraftXboxDisableAccountSigninBuild=true"
 }
 
+$msbuildLogArgs = @("/v:minimal")
+if ($DiagnosticMsbuildLog.IsPresent) {
+    $msbuildLogDir = Join-Path $repoRoot "artifacts\logs"
+    New-Item -ItemType Directory -Force -Path $msbuildLogDir | Out-Null
+    $msbuildLogStamp = Get-Date -Format yyyyMMdd-HHmmss
+    $msbuildTextLog = Join-Path $msbuildLogDir "MinecraftJavaTestFixes-msbuild-$msbuildLogStamp.log"
+    $msbuildBinaryLog = Join-Path $msbuildLogDir "MinecraftJavaTestFixes-msbuild-$msbuildLogStamp.binlog"
+    $msbuildLogArgs += @(
+        "/flp:logfile=$msbuildTextLog;verbosity=diagnostic",
+        "/bl:$msbuildBinaryLog"
+    )
+}
+
 $packageDirName = "AppPackages\MinecraftJavaTestFixes_${Configuration}_$(Get-Date -Format yyyyMMddHHmmss)\"
+$msbuildTarget = "Build"
 
 Write-Host ""
 Write-Host "Building MinecraftJavaTestFixes package..."
 Write-Host "  Identity: MinecraftJavaTestFixes"
 Write-Host "  Payload: $payloadVersion ($payloadRoot)"
+Write-Host "  MSBuild target: $msbuildTarget"
 Write-Host "  First-launch game downloads: $($DownloadMinecraftFilesOnFirstLaunch.IsPresent)"
 Write-Host "  First-launch asset-object downloads only: $($DownloadOnlyAssetObjectsOnFirstLaunch.IsPresent)"
 if ($extraBuildProps.Count -gt 0) {
     Write-Host "  Extra build properties: $($extraBuildProps -join ' ')"
 }
+if ($DiagnosticMsbuildLog.IsPresent) {
+    Write-Host "  MSBuild text log: $msbuildTextLog"
+    Write-Host "  MSBuild binary log: $msbuildBinaryLog"
+}
 Write-Host "  Fixes: disabled EGL warmup export, raw CoreWindow surface first, eglSwapBuffers diagnostics"
 Write-Host ""
 
-& $msbuild $project /restore /t:Rebuild /p:Configuration=$Configuration /p:Platform=x64 `
+& $msbuild $project /restore "/t:$msbuildTarget" /p:Configuration=$Configuration /p:Platform=x64 `
     "/p:AppxPackageDir=$packageDirName" `
     "/p:AppxBundle=Never" `
     "/p:UapAppxPackageBuildMode=SideLoadOnly" `
@@ -202,7 +223,7 @@ Write-Host ""
     "/p:DownloadOnlyAssetObjectsOnFirstLaunch=$($DownloadOnlyAssetObjectsOnFirstLaunch.IsPresent.ToString().ToLowerInvariant())" `
     "/p:TestFixesBuild=true" `
     @extraBuildProps `
-    @signingProps /v:minimal /nr:false
+    @signingProps @msbuildLogArgs /nr:false
 
 if ($LASTEXITCODE -ne 0) {
     throw "MSBuild failed with exit code $LASTEXITCODE"

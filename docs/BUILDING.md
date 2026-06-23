@@ -117,13 +117,27 @@ local-test-files\BundledMods\
 
 Use the folders for the profile names you want the launcher to expose. Keep mod `.jar` files out of git unless they are your own files and you are allowed to redistribute them.
 
+See [Mod distribution notes](MOD_DISTRIBUTION.md) before making any public release that includes third-party mod jars.
+
 The launcher treats folders under each version folder as selectable mod sets. For example, `mods-library\1.21.11\default` shows up as `default`, and `mods-library\1.21.11\legacy4j` shows up as `legacy4j`. Loose `.jar` files directly under the version folder are still available as shared support mods for that version.
 
 ## 7. Account Sign-In
 
 `New-MultiVersionPayload.ps1 -EnableAccountSignin` writes an `enable-account-signin` marker into the packaged payload. With that marker present, the native launcher asks for Microsoft sign-in on first launch and caches the Minecraft session in LocalState.
 
-For local testing without your own Azure client ID, the native launcher falls back to a device-code test client ID so Xbox can show a `microsoft.com/link` code instead of an embedded browser. The public Minecraft launcher ID described by Lin's launcher-auth writeup is kept for optional web-flow experiments, but that path is not enabled by default because it can hang on Xbox. For a public release, use your own approved client ID instead.
+The repository does not include a Microsoft/Azure client ID. For account sign-in, provide your own app registration locally with one of these options:
+
+```powershell
+$env:MINECRAFT_XBOX_MICROSOFT_CLIENT_ID = "YOUR-CLIENT-ID"
+```
+
+or place this ignored local file in the app LocalState payload before packaging:
+
+```text
+microsoft-client-id.txt
+```
+
+Do not commit `microsoft-client-id.txt`, cached auth sessions, access tokens, or generated package logs. The native launcher stores Minecraft sessions in `minecraft-auth-session.protected` when sign-in succeeds.
 
 ## 8. Find the Package
 

@@ -291,6 +291,7 @@ typedef void* (WINAPI* EglGetProcAddressProc)(const char*);
 typedef void* (WINAPI* EglGetCurrentDisplayProc)();
 typedef void* (WINAPI* EglGetCurrentSurfaceProc)(int);
 typedef unsigned int (WINAPI* EglSwapBuffersProc)(void*, void*);
+typedef unsigned int (WINAPI* EglSwapIntervalProc)(void*, int);
 typedef unsigned int (WINAPI* EglGetErrorProc)();
 typedef PROC (WINAPI* WglGetProcAddressProc)(LPCSTR);
 static constexpr int EGL_DRAW_VALUE = 0x3059;
@@ -303,6 +304,7 @@ static EglGetProcAddressProc g_realEglGetProcAddress = nullptr;
 static EglGetCurrentDisplayProc g_realEglGetCurrentDisplay = nullptr;
 static EglGetCurrentSurfaceProc g_realEglGetCurrentSurface = nullptr;
 static EglSwapBuffersProc g_realEglSwapBuffers = nullptr;
+static EglSwapIntervalProc g_realEglSwapInterval = nullptr;
 static EglGetErrorProc g_realEglGetError = nullptr;
 static WglGetProcAddressProc g_realWglGetProcAddress = nullptr;
 static std::atomic<int> g_realMesaInit{ 0 };
@@ -311,6 +313,7 @@ static std::atomic<int> g_forwardLogCount{ 0 };
 static std::atomic<int> g_fallbackLogCount{ 0 };
 static std::atomic<int> g_resolveProbeLogCount{ 0 };
 static std::atomic<int> g_swapLogCount{ 0 };
+static std::atomic<int> g_lwjgl2SwapIntervalAttempted{ 0 };
 static std::atomic<int> g_glCallProbeLogCount{ 0 };
 
 static void DebugLine(const char* message) {
@@ -366,6 +369,34 @@ static bool IsFatalNativeException(DWORD code) {
     }
 }
 
+static void FormatAddressModule(void* address, char* buffer, size_t bufferSize) {
+    if (!buffer || bufferSize == 0) {
+        return;
+    }
+
+    buffer[0] = '\0';
+    if (!address) {
+        std::snprintf(buffer, bufferSize, "null");
+        return;
+    }
+
+    MEMORY_BASIC_INFORMATION memoryInfo = {};
+    if (VirtualQuery(address, &memoryInfo, sizeof(memoryInfo)) == 0 || !memoryInfo.AllocationBase) {
+        std::snprintf(buffer, bufferSize, "%p module=<unknown>", address);
+        return;
+    }
+
+    char modulePath[MAX_PATH] = {};
+    DWORD length = GetModuleFileNameA(reinterpret_cast<HMODULE>(memoryInfo.AllocationBase), modulePath, static_cast<DWORD>(sizeof(modulePath) / sizeof(modulePath[0])));
+    const uintptr_t offset = reinterpret_cast<uintptr_t>(address) - reinterpret_cast<uintptr_t>(memoryInfo.AllocationBase);
+    if (length == 0 || length >= (sizeof(modulePath) / sizeof(modulePath[0]))) {
+        std::snprintf(buffer, bufferSize, "%p moduleBase=%p+0x%llX", address, memoryInfo.AllocationBase, static_cast<unsigned long long>(offset));
+        return;
+    }
+
+    std::snprintf(buffer, bufferSize, "%p %s+0x%llX", address, modulePath, static_cast<unsigned long long>(offset));
+}
+
 static LONG WINAPI NativeFatalExceptionLogger(PEXCEPTION_POINTERS info) {
     if (!info || !info->ExceptionRecord) {
         return EXCEPTION_CONTINUE_SEARCH;
@@ -376,30 +407,71 @@ static LONG WINAPI NativeFatalExceptionLogger(PEXCEPTION_POINTERS info) {
         return EXCEPTION_CONTINUE_SEARCH;
     }
 
-    static volatile LONG logged = 0;
-    if (InterlockedExchange(&logged, 1) == 0) {
+    static volatile LONG loggedCount = 0;
+    const LONG eventIndex = InterlockedIncrement(&loggedCount);
+    if (eventIndex <= 8) {
         const ULONG_PTR p0 = info->ExceptionRecord->NumberParameters > 0
             ? info->ExceptionRecord->ExceptionInformation[0]
             : 0;
         const ULONG_PTR p1 = info->ExceptionRecord->NumberParameters > 1
             ? info->ExceptionRecord->ExceptionInformation[1]
             : 0;
+        char exceptionAddress[760] = {};
+        char accessAddress[760] = {};
+        FormatAddressModule(info->ExceptionRecord->ExceptionAddress, exceptionAddress, sizeof(exceptionAddress));
+        FormatAddressModule(reinterpret_cast<void*>(p1), accessAddress, sizeof(accessAddress));
         char line[320] = {};
         std::snprintf(
             line,
             sizeof(line),
-            "native fatal exception code=0x%08lX address=%p info0=0x%llX info1=0x%llX",
+            "native fatal exception #%ld code=0x%08lX address=%p info0=0x%llX info1=0x%llX",
+            eventIndex,
             code,
             info->ExceptionRecord->ExceptionAddress,
             static_cast<unsigned long long>(p0),
             static_cast<unsigned long long>(p1));
         DebugLine(line);
+
+        char moduleLine[1600] = {};
+        std::snprintf(
+            moduleLine,
+            sizeof(moduleLine),
+            "native fatal exception #%ld module address=%s access=%s",
+            eventIndex,
+            exceptionAddress,
+            accessAddress);
+        DebugLine(moduleLine);
+
+        void* stack[16] = {};
+        USHORT frames = CaptureStackBackTrace(0, static_cast<DWORD>(sizeof(stack) / sizeof(stack[0])), stack, nullptr);
+        for (USHORT i = 0; i < frames && i < 10; ++i) {
+            char frameAddress[760] = {};
+            FormatAddressModule(stack[i], frameAddress, sizeof(frameAddress));
+            char stackLine[900] = {};
+            std::snprintf(
+                stackLine,
+                sizeof(stackLine),
+                "native fatal exception #%ld stack[%u]=%s",
+                eventIndex,
+                static_cast<unsigned int>(i),
+                frameAddress);
+            DebugLine(stackLine);
+        }
     }
 
     return EXCEPTION_CONTINUE_SEARCH;
 }
 
 static void InstallNativeFatalExceptionLogger() {
+    wchar_t enabled[16] = {};
+    DWORD length = GetEnvironmentVariableW(
+        L"MINECRAFT_XBOX_ENABLE_NATIVE_EXCEPTION_LOG",
+        enabled,
+        static_cast<DWORD>(sizeof(enabled) / sizeof(enabled[0])));
+    if (length == 0 || length >= (sizeof(enabled) / sizeof(enabled[0])) || enabled[0] == L'\0' || enabled[0] == L'0') {
+        return;
+    }
+
     static volatile LONG installed = 0;
     if (InterlockedCompareExchange(&installed, 1, 0) == 0) {
         AddVectoredExceptionHandler(1, NativeFatalExceptionLogger);
@@ -589,6 +661,8 @@ static void EnsureRealMesaLoaded() {
             GetProcAddress(g_realEglModule, "eglGetCurrentSurface"));
         g_realEglSwapBuffers = reinterpret_cast<EglSwapBuffersProc>(
             GetProcAddress(g_realEglModule, "eglSwapBuffers"));
+        g_realEglSwapInterval = reinterpret_cast<EglSwapIntervalProc>(
+            GetProcAddress(g_realEglModule, "eglSwapInterval"));
         g_realEglGetError = reinterpret_cast<EglGetErrorProc>(
             GetProcAddress(g_realEglModule, "eglGetError"));
     }
@@ -597,12 +671,13 @@ static void EnsureRealMesaLoaded() {
     std::snprintf(
         line,
         sizeof(line),
-        "Mesa forwarder ready opengl=%p egl=%p gles2=%p gles1=%p eglGetProcAddress=%p eglProcOnly=%d",
+        "Mesa forwarder ready opengl=%p egl=%p gles2=%p gles1=%p eglGetProcAddress=%p eglSwapInterval=%p eglProcOnly=%d",
         g_realOpenGlModule,
         g_realEglModule,
         g_realGlesModule,
         g_realGles1Module,
         reinterpret_cast<void*>(g_realEglGetProcAddress),
+        reinterpret_cast<void*>(g_realEglSwapInterval),
         eglProcOnly ? 1 : 0);
     DebugLine(line);
     g_realMesaInit.store(2, std::memory_order_release);
@@ -657,6 +732,74 @@ static bool IsTruthyEnvironment(const wchar_t* name) {
         buffer[0] != L'0' &&
         _wcsicmp(buffer, L"false") != 0 &&
         _wcsicmp(buffer, L"no") != 0;
+}
+
+static bool TryQueryEnvironmentInt(const wchar_t* name, int& value) {
+    wchar_t buffer[32] = {};
+    DWORD len = GetEnvironmentVariableW(name, buffer, static_cast<DWORD>(sizeof(buffer) / sizeof(buffer[0])));
+    if (len == 0 || len >= static_cast<DWORD>(sizeof(buffer) / sizeof(buffer[0]))) {
+        return false;
+    }
+
+    wchar_t* end = nullptr;
+    long parsed = std::wcstol(buffer, &end, 10);
+    if (end == buffer) {
+        return false;
+    }
+
+    value = static_cast<int>(parsed);
+    return true;
+}
+
+static void ApplyLwjgl2ForcedSwapInterval(void* display) {
+    if (!display) {
+        return;
+    }
+
+    int forced = 0;
+    if (!TryQueryEnvironmentInt(L"MINECRAFT_XBOX_FORCE_SWAP_INTERVAL", forced)) {
+        return;
+    }
+
+    int expected = 0;
+    if (!g_lwjgl2SwapIntervalAttempted.compare_exchange_strong(expected, 1, std::memory_order_acq_rel)) {
+        return;
+    }
+
+    const int interval = forced > 0 ? 1 : 0;
+    unsigned int result = 0;
+    unsigned int err = 0;
+    bool exception = false;
+    if (g_realEglSwapInterval) {
+        __try {
+            result = g_realEglSwapInterval(display, interval);
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER) {
+            exception = true;
+            result = 0;
+        }
+    }
+    if (g_realEglGetError) {
+        __try {
+            err = g_realEglGetError();
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER) {
+            err = 0xffffffffu;
+        }
+    }
+
+    char line[256] = {};
+    std::snprintf(
+        line,
+        sizeof(line),
+        "eglSwapInterval(%d) reason=lwjgl2-forced result=%u err=0x%04X requested=%d proc=%p exception=%d",
+        interval,
+        result,
+        err,
+        forced,
+        reinterpret_cast<void*>(g_realEglSwapInterval),
+        exception ? 1 : 0);
+    DebugLine(line);
 }
 
 static bool IsFrameTimingEnabled() {
@@ -2201,6 +2344,8 @@ static void TrySwapCurrentEglSurface() {
         }
         return;
     }
+
+    ApplyLwjgl2ForcedSwapInterval(display);
 
     unsigned int result = 0;
     bool swapException = false;

@@ -311,7 +311,7 @@ foreach ($library in @($versionJson.libraries)) {
         Save-Download -Url $artifact.url -Path $artifactPath -Sha1 $artifact.sha1 -Size $artifact.size
         Add-ManifestEntry -RemoteUrl $artifact.url -RelativePath $relative -Size $artifact.size
         $artifactFile = [System.IO.Path]::GetFileName($artifact.path)
-        if ($artifactFile -eq "jna-5.17.0.jar") {
+        if ($artifactFile -match '^jna-\d+(\.\d+)*\.jar$') {
             $jnaJarPath = $artifactPath
         }
         if ($artifactFile.EndsWith("-natives-windows.jar", [System.StringComparison]::OrdinalIgnoreCase)) {

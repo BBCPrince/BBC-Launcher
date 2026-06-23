@@ -77,15 +77,18 @@ try {
 }
 Write-Host "    OK: native\XboxPathProbe.jar"
 
-$patchSrc = Join-Path $src "sun\nio\fs\WindowsLinkSupport.java"
+$patchSrc = @(
+    (Join-Path $src "sun\nio\fs\WindowsLinkSupport.java"),
+    (Join-Path $src "java\io\WinNTFileSystem.java")
+)
 $patchOutDir = Join-Path $patchRoot "out-patch"
 if (Test-Path $patchOutDir) { Remove-Item $patchOutDir -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $patchOutDir | Out-Null
-Write-Host "==> Compiling sun.nio.fs.WindowsLinkSupport (java.base patch)"
+Write-Host "==> Compiling java.base patch classes"
 & $javac `
     --patch-module "java.base=$src" `
     -d $patchOutDir `
-    $patchSrc | Out-Host
+    @patchSrc | Out-Host
 if ($LASTEXITCODE -ne 0) { throw "javac (jdk patch) failed (exit $LASTEXITCODE)" }
 
 $jarPath = Join-Path $nativeOut "xbox-jdk-patch.jar"
@@ -93,15 +96,27 @@ if (Test-Path $jarPath) { Remove-Item $jarPath -Force }
 Write-Host "==> Packing xbox-jdk-patch.jar"
 Push-Location $patchOutDir
 try {
-    & $jar -cf $jarPath "sun" | Out-Host
+    & $jar -cf $jarPath "sun" "java" | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "jar failed (exit $LASTEXITCODE)" }
 } finally {
     Pop-Location
 }
 Write-Host "    OK: native\xbox-jdk-patch.jar"
 
+$linkJarPath = Join-Path $nativeOut "xbox-jdk-link-patch.jar"
+if (Test-Path $linkJarPath) { Remove-Item $linkJarPath -Force }
+Write-Host "==> Packing xbox-jdk-link-patch.jar"
+Push-Location $patchOutDir
+try {
+    & $jar -cf $linkJarPath "sun" | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "jar (link patch) failed (exit $LASTEXITCODE)" }
+} finally {
+    Pop-Location
+}
+Write-Host "    OK: native\xbox-jdk-link-patch.jar"
+
 Write-Host ""
 Write-Host "Done. Artifacts in $nativeOut :"
-Get-ChildItem $nativeOut -File | Where-Object { $_.Name -match "XboxPathProbe|xbox-jdk-patch" } | ForEach-Object {
+Get-ChildItem $nativeOut -File | Where-Object { $_.Name -match "XboxPathProbe|xbox-jdk-patch|xbox-jdk-link-patch" } | ForEach-Object {
     "    {0}  {1:N0} bytes" -f $_.Name, $_.Length
 }

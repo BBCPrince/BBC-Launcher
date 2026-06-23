@@ -7,15 +7,15 @@
   IgnorableNamespaces="uap rescap mp">
 
   <Identity
-    Name="BBCLauncher"
+    Name="BBCLauncherbeta"
     Publisher="CN=Developer"
-    Version="1.0.356.0" />
+    Version="1.0.395.0" />
   <mp:PhoneIdentity
-    PhoneProductId="B72A19B4-9B45-4E44-A70F-5EFC5B9855C5"
+    PhoneProductId="465F59C0-2ECD-4161-A32A-3DD1858F9AEA"
     PhonePublisherId="00000000-0000-0000-0000-000000000000" />
 
   <Properties>
-    <DisplayName>BBC Launcher</DisplayName>
+    <DisplayName>BBC Launcher Beta</DisplayName>
     <PublisherDisplayName>Big Block Craft</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
@@ -35,12 +35,12 @@
 
   <Applications>
     <Application
-      Id="App"
+      Id="BBCLauncherbeta"
       Executable="$targetnametoken$.exe"
       EntryPoint="CoreWindowProbe.App">
       <uap:VisualElements
-        DisplayName="BBC Launcher"
-        Description="Big Block Craft Launcher for Minecraft Java on Xbox"
+        DisplayName="BBC Launcher Beta"
+        Description="Big Block Craft Launcher Beta for Minecraft Java on Xbox"
         Square150x150Logo="Assets\Square150x150Logo.png"
         Square44x44Logo="Assets\Square44x44Logo.png"
         BackgroundColor="#1E1E1E">

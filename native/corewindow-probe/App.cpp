@@ -4,13 +4,17 @@ using namespace winrt;
 using namespace Windows::ApplicationModel;
 using namespace Windows::ApplicationModel::Core;
 using namespace Windows::Data::Json;
+using namespace Windows::Devices::Input;
 using namespace Windows::Foundation;
 using namespace Windows::Foundation::Collections;
 using namespace Windows::Graphics::Display;
 using namespace Windows::Security::Authentication::Web;
+using namespace Windows::Security::Cryptography;
+using namespace Windows::Security::Cryptography::DataProtection;
 using namespace Windows::Storage;
 using namespace Windows::Storage::Streams;
 using namespace Windows::UI::Core;
+using namespace Windows::UI::Input;
 using namespace Windows::UI::Popups;
 using namespace Windows::UI::ViewManagement;
 using namespace Windows::Web::Http;
@@ -100,6 +104,7 @@ static bool WriteTextFileUtf8(std::wstring const& path, std::string const& text)
 static IUICommand ShowDialogAndPump(CoreWindow const& window, MessageDialog& dialog);
 static std::wstring FileNameOnly(std::wstring const& path);
 static std::wstring ToLongWin32Path(std::wstring const& path);
+static std::wstring TrimWhitespace(std::wstring value);
 
 static std::wstring g_logPath;
 static EglState g_eglState;
@@ -120,6 +125,7 @@ static void WriteLogF(const wchar_t* format, ...);
 static bool ProbeMesaEgl(CoreWindow const& window, bool preloadOpenGl, bool useDesktopOpenGl);
 static void CleanupProbeEgl();
 static void RenderDownloadStatusFrame(uint32_t frame);
+static bool RunMousePointerTest(CoreWindow const& window, bool& closed);
 
 static void TryDisableXboxLayoutScaling()
 {
@@ -2972,12 +2978,18 @@ static bool IsMainLegacy4JModName(std::wstring const& fileName)
     return lower.rfind(L"legacy4j-", 0) == 0;
 }
 
+static bool IsFabricLanDiscoveryModName(std::wstring const& fileName)
+{
+    std::wstring lower = ToLowerInvariant(fileName);
+    return lower.rfind(L"xbox-lan-discovery-fabric", 0) == 0;
+}
+
 static bool IsCoreFabricSupportModName(std::wstring const& fileName)
 {
     std::wstring lower = ToLowerInvariant(fileName);
     return lower.rfind(L"fabric-api-", 0) == 0 ||
         lower.rfind(L"framework-fabric-", 0) == 0 ||
-        lower.rfind(L"xbox-lan-discovery-fabric", 0) == 0;
+        IsFabricLanDiscoveryModName(fileName);
 }
 
 static bool AddSelectedModUnique(std::vector<std::wstring>& selected, std::wstring const& mod)
@@ -2991,13 +3003,25 @@ static bool AddSelectedModUnique(std::vector<std::wstring>& selected, std::wstri
     return true;
 }
 
-static void AutoStageCoreFabricSupportMods(std::vector<std::wstring> const& available, std::vector<std::wstring>& selected)
+static void AutoStageCoreFabricSupportMods(
+    std::vector<std::wstring> const& available,
+    std::vector<std::wstring>& selected,
+    bool includeLanDiscovery)
 {
     for (auto const& mod : available)
     {
         std::wstring name = FileNameOnly(mod);
         if (!IsCoreFabricSupportModName(name))
         {
+            continue;
+        }
+
+        if (IsFabricLanDiscoveryModName(name) && !includeLanDiscovery)
+        {
+            WriteLogF(
+                L"MODLOG skipped core Fabric support name=%s path=%s reason=requires Minecraft 1.21+",
+                name.c_str(),
+                mod.c_str());
             continue;
         }
 
@@ -3189,7 +3213,7 @@ static void UpsertTomlScalar(std::string& config, const char* key, const char* v
     config += "\r\n";
 }
 
-static void ForceNeoForgeEarlyWindowDisabled(std::wstring const& gameDir)
+static void ForceModLauncherEarlyWindowDisabled(std::wstring const& gameDir, std::wstring const& loaderName)
 {
     std::wstring configPath = gameDir + L"\\config\\fml.toml";
     std::string config;
@@ -3198,7 +3222,7 @@ static void ForceNeoForgeEarlyWindowDisabled(std::wstring const& gameDir)
     {
         config =
             "# Written by BBC Launcher.\r\n"
-            "# NeoForge's early loading window creates a second GL bootstrap path that is unstable on UWP CoreWindow EGL.\r\n";
+            "# Forge/NeoForge's early loading window creates a second GL bootstrap path that is unstable on UWP CoreWindow EGL.\r\n";
     }
 
     UpsertTomlScalar(config, "earlyWindowControl", "false");
@@ -3206,7 +3230,7 @@ static void ForceNeoForgeEarlyWindowDisabled(std::wstring const& gameDir)
 
     if (WriteTextFileUtf8(configPath, config))
     {
-        WriteLogF(L"NeoForge profile detected; disabled NeoForge early window in %s", configPath.c_str());
+        WriteLogF(L"%s profile detected; disabled ModLauncher early window in %s", loaderName.c_str(), configPath.c_str());
     }
 }
 
@@ -3289,9 +3313,19 @@ static void ForceLegacy4JGlfwControllerHandler(std::wstring const& gameDir)
     }
 }
 
-static void ForceSodiumStableFpsConfig(std::wstring const& gameDir)
+static bool IsCreativeSearchMesaRiskVersion(std::wstring const& version)
+{
+    return version == L"1.20.1" || version == L"1.21.1";
+}
+
+static void ForceSodiumStableFpsConfig(std::wstring const& gameDir, bool mesaSafetyMode)
 {
     std::wstring configPath = gameDir + L"\\config\\sodium-options.json";
+    const char* noErrorGlContext = mesaSafetyMode ? "false" : "true";
+    const char* advancedStagingBuffers = mesaSafetyMode ? "false" : "true";
+    const char* cpuRenderAheadLimit = mesaSafetyMode ? "1" : "3";
+    const char* terrainSortingEnabled = mesaSafetyMode ? "false" : "true";
+
     std::string config =
         "{\r\n"
         "  \"quality\": {\r\n"
@@ -3307,16 +3341,16 @@ static void ForceSodiumStableFpsConfig(std::wstring const& gameDir)
         "    \"use_entity_culling\": true,\r\n"
         "    \"use_fog_occlusion\": true,\r\n"
         "    \"use_block_face_culling\": true,\r\n"
-        "    \"use_no_error_gl_context\": true,\r\n"
+        "    \"use_no_error_gl_context\": " + std::string(noErrorGlContext) + ",\r\n"
         "    \"quad_splitting_mode\": \"SAFE\"\r\n"
         "  },\r\n"
         "  \"advanced\": {\r\n"
         "    \"enable_memory_tracing\": false,\r\n"
-        "    \"use_advanced_staging_buffers\": true,\r\n"
-        "    \"cpu_render_ahead_limit\": 3\r\n"
+        "    \"use_advanced_staging_buffers\": " + std::string(advancedStagingBuffers) + ",\r\n"
+        "    \"cpu_render_ahead_limit\": " + std::string(cpuRenderAheadLimit) + "\r\n"
         "  },\r\n"
         "  \"debug\": {\r\n"
-        "    \"terrain_sorting_enabled\": true\r\n"
+        "    \"terrain_sorting_enabled\": " + std::string(terrainSortingEnabled) + "\r\n"
         "  },\r\n"
         "  \"notifications\": {\r\n"
         "    \"has_cleared_donation_button\": true,\r\n"
@@ -3326,7 +3360,64 @@ static void ForceSodiumStableFpsConfig(std::wstring const& gameDir)
 
     if (WriteTextFileUtf8(configPath, config))
     {
-        WriteLogF(L"Sodium detected; wrote stable FPS config in %s", configPath.c_str());
+        WriteLogF(
+            L"Sodium detected; wrote stable FPS config in %s mesaSafetyMode=%d",
+            configPath.c_str(),
+            mesaSafetyMode ? 1 : 0);
+    }
+}
+
+static std::string ControlifyGlfwOnlyConfig()
+{
+    return
+        "{\r\n"
+        "  \"current_controller\": null,\r\n"
+        "  \"controllers\": {},\r\n"
+        "  \"global\": {\r\n"
+        "    \"virtual_mouse_screens\": [],\r\n"
+        "    \"always_keyboard_movement\": false,\r\n"
+        "    \"keyboard_movement_whitelist\": [],\r\n"
+        "    \"out_of_focus_input\": false,\r\n"
+        "    \"load_vibration_natives\": false,\r\n"
+        "    \"custom_vibration_natives_path\": \"\",\r\n"
+        "    \"vibration_onboarded\": true,\r\n"
+        "    \"reach_around\": \"OFF\",\r\n"
+        "    \"allow_server_rumble\": false,\r\n"
+        "    \"ui_sounds\": false,\r\n"
+        "    \"notify_low_battery\": true,\r\n"
+        "    \"quiet_mode\": false,\r\n"
+        "    \"ingame_button_guide_scale\": 1.0,\r\n"
+        "    \"use_enhanced_steam_deck_driver\": false,\r\n"
+        "    \"seen_servers\": []\r\n"
+        "  }\r\n"
+        "}\r\n";
+}
+
+static void ForceControlifyGlfwOnlyConfig(std::wstring const& gameDir)
+{
+    std::wstring configDir = gameDir + L"\\config";
+    EnsureDirectory(configDir);
+
+    std::wstring configPath = configDir + L"\\controlify.json";
+    std::string config;
+    ReadSmallTextFileUtf8(configPath, config);
+    if (config.find("\"global\"") == std::string::npos)
+    {
+        config = ControlifyGlfwOnlyConfig();
+    }
+    else
+    {
+        UpsertJsonNumberProperty(config, "load_vibration_natives", "false");
+        UpsertJsonNumberProperty(config, "vibration_onboarded", "true");
+        UpsertJsonNumberProperty(config, "custom_vibration_natives_path", "\"\"");
+        UpsertJsonNumberProperty(config, "allow_server_rumble", "false");
+        UpsertJsonNumberProperty(config, "use_enhanced_steam_deck_driver", "false");
+    }
+
+    EnsureDirectory(gameDir + L"\\controlify-natives");
+    if (WriteTextFileUtf8(configPath, config))
+    {
+        WriteLogF(L"Controlify detected; forced GLFW-only config and disabled SDL vibration natives in %s", configPath.c_str());
     }
 }
 
@@ -3360,6 +3451,9 @@ static bool HasStagedMod(std::wstring const& gameDir, const wchar_t* nameNeedle)
     FindClose(find);
     return found;
 }
+
+static std::wstring InferBaseMinecraftVersion(std::wstring const& version);
+static int ParseMinecraftMinorVersion(std::wstring const& version);
 
 static void PickAndStageModsInteractive(
     CoreWindow const& window,
@@ -3414,13 +3508,24 @@ static void PickAndStageModsInteractive(
     LogModDirectorySnapshot(L"staged-after-clear", modsDir);
 
     std::vector<std::wstring> builtInFabricSupportMods;
-    if (fabricProfile && FileExists(builtInFabricLanMod))
+    std::wstring builtInFabricLanCompatVersion = baseMinecraftVersion.empty()
+        ? InferBaseMinecraftVersion(minecraftVersion)
+        : baseMinecraftVersion;
+    bool builtInFabricLanCompatible =
+        fabricProfile && ParseMinecraftMinorVersion(builtInFabricLanCompatVersion) >= 21;
+    if (builtInFabricLanCompatible && FileExists(builtInFabricLanMod))
     {
         builtInFabricSupportMods.push_back(builtInFabricLanMod);
         WriteLogF(
             L"MODLOG built-in Fabric support available name=%s path=%s",
             FileNameOnly(builtInFabricLanMod).c_str(),
             builtInFabricLanMod.c_str());
+    }
+    else if (fabricProfile && !builtInFabricLanCompatible)
+    {
+        WriteLogF(
+            L"MODLOG built-in Fabric LAN discovery skipped for Minecraft %s; bundled jar requires Minecraft 1.21+",
+            builtInFabricLanCompatVersion.empty() ? L"<unknown>" : builtInFabricLanCompatVersion.c_str());
     }
     else if (fabricProfile)
     {
@@ -3489,7 +3594,7 @@ static void PickAndStageModsInteractive(
     }
     if (fabricProfile)
     {
-        AutoStageCoreFabricSupportMods(mods, staged);
+        AutoStageCoreFabricSupportMods(mods, staged, builtInFabricLanCompatible);
     }
 
     ModChoice choice = ModChoice::None;
@@ -3623,7 +3728,7 @@ static void PickAndStageModsInteractive(
     });
     if (sodiumStaged)
     {
-        ForceSodiumStableFpsConfig(gameDir);
+        ForceSodiumStableFpsConfig(gameDir, IsCreativeSearchMesaRiskVersion(baseMinecraftVersion));
     }
 
     std::string selected;
@@ -3727,6 +3832,45 @@ static std::wstring TrimWhitespace(std::wstring value)
         value.erase(0, first);
     }
     return value;
+}
+
+static std::wstring ReadGamepadMouseSettingFile(
+    std::wstring const& localRoot,
+    const wchar_t* fileName,
+    const wchar_t* fallback)
+{
+    std::wstring path = localRoot + L"\\" + fileName;
+    std::string bytes;
+    if (ReadSmallTextFileUtf8(path, bytes))
+    {
+        std::wstring value = TrimWhitespace(Utf8ToWide(bytes.c_str()));
+        if (!value.empty())
+        {
+            return value;
+        }
+    }
+
+    WriteTextFileUtf8(path, WideToUtf8(fallback) + "\r\n");
+    return fallback;
+}
+
+static void ApplyGamepadMouseSettings(std::wstring const& localRoot)
+{
+    std::wstring speed = ReadGamepadMouseSettingFile(localRoot, L"gamepad-mouse-speed.txt", L"0.38");
+    std::wstring deadzone = ReadGamepadMouseSettingFile(localRoot, L"gamepad-mouse-deadzone.txt", L"0.18");
+    std::wstring rightStick = ReadGamepadMouseSettingFile(localRoot, L"gamepad-mouse-right-stick.txt", L"0.45");
+    std::wstring stickDeadzone = ReadGamepadMouseSettingFile(localRoot, L"gamepad-stick-deadzone.txt", L"0.22");
+
+    SetEnvironmentVariableW(L"MINECRAFT_XBOX_GAMEPAD_MOUSE_SPEED", speed.c_str());
+    SetEnvironmentVariableW(L"MINECRAFT_XBOX_GAMEPAD_MOUSE_DEADZONE", deadzone.c_str());
+    SetEnvironmentVariableW(L"MINECRAFT_XBOX_GAMEPAD_MOUSE_RIGHT_STICK", rightStick.c_str());
+    SetEnvironmentVariableW(L"MINECRAFT_XBOX_GAMEPAD_STICK_DEADZONE", stickDeadzone.c_str());
+    WriteLogF(
+        L"Gamepad settings mouseSpeed=%s mouseDeadzone=%s rightStick=%s stickDeadzone=%s",
+        speed.c_str(),
+        deadzone.c_str(),
+        rightStick.c_str(),
+        stickDeadzone.c_str());
 }
 
 static bool IsRootedWindowsPath(std::wstring const& path)
@@ -3934,30 +4078,34 @@ struct XboxAuthToken
     std::wstring xuid;
 };
 
+static void SaveAuthSession(std::wstring const& localRoot, MinecraftAuthSession const& session);
+
 static std::wstring NormalizeMinecraftUuid(std::wstring uuid)
 {
     uuid.erase(std::remove(uuid.begin(), uuid.end(), L'-'), uuid.end());
     return uuid;
 }
 
-static constexpr wchar_t kMinecraftLauncherTestClientId[] = L"00000000402B5328";
-static constexpr wchar_t kDefaultDeviceCodeClientId[] = L"a5986ff5-f8a1-445c-8f3a-82f112785593";
 static constexpr wchar_t kMinecraftLauncherTestRedirectUri[] = L"https://login.live.com/oauth20_desktop.srf";
 
-static std::wstring ResolveMicrosoftClientId()
+static std::wstring ResolveMicrosoftClientId(std::wstring const& localRoot = L"")
 {
     std::wstring fromEnv = GetEnvironmentVariableString(L"MINECRAFT_XBOX_MICROSOFT_CLIENT_ID");
     if (!fromEnv.empty())
     {
-        return fromEnv;
+        return TrimWhitespace(fromEnv);
     }
 
-    return kMinecraftLauncherTestClientId;
-}
+    if (!localRoot.empty())
+    {
+        std::string text;
+        if (ReadSmallTextFileUtf8(localRoot + L"\\microsoft-client-id.txt", text))
+        {
+            return TrimWhitespace(Utf8ToWide(text.c_str()));
+        }
+    }
 
-static bool IsMinecraftLauncherTestClientId(std::wstring const& clientId)
-{
-    return clientId == kMinecraftLauncherTestClientId;
+    return L"";
 }
 
 static std::wstring AuthSessionPath(std::wstring const& localRoot)
@@ -3965,21 +4113,77 @@ static std::wstring AuthSessionPath(std::wstring const& localRoot)
     return localRoot + L"\\minecraft-auth-session.json";
 }
 
-static bool TryLoadCachedAuthSession(std::wstring const& localRoot, MinecraftAuthSession& session)
+static std::wstring ProtectedAuthSessionPath(std::wstring const& localRoot)
 {
-    if (FileExists(localRoot + L"\\force-account-signin"))
+    return localRoot + L"\\minecraft-auth-session.protected";
+}
+
+static bool ProtectAuthSessionJson(std::string const& json, std::string& protectedText)
+{
+    try
     {
-        WriteLogW(L"AUTH force-account-signin present; cached session ignored");
-        DeleteFileW((localRoot + L"\\force-account-signin").c_str());
-        return false;
+        IBuffer plainBuffer = CryptographicBuffer::ConvertStringToBinary(
+            hstring(Utf8ToWide(json.c_str())),
+            BinaryStringEncoding::Utf8);
+        DataProtectionProvider provider(L"LOCAL=user");
+        IBuffer protectedBuffer = provider.ProtectAsync(plainBuffer).get();
+        std::wstring encoded = CryptographicBuffer::EncodeToBase64String(protectedBuffer).c_str();
+        protectedText = "BBC-LAUNCHER-AUTH-V1\r\n" + WideToUtf8(encoded);
+        return true;
+    }
+    catch (hresult_error const& ex)
+    {
+        WriteLogF(L"AUTH token protection failed hr=0x%08X", static_cast<unsigned int>(ex.code()));
+    }
+    catch (...)
+    {
+        WriteLogW(L"AUTH token protection failed with unknown exception");
     }
 
-    std::string json;
-    if (!ReadSmallTextFileUtf8(AuthSessionPath(localRoot), json))
+    protectedText.clear();
+    return false;
+}
+
+static bool UnprotectAuthSessionJson(std::string const& protectedText, std::string& json)
+{
+    json.clear();
+    try
     {
-        return false;
+        std::wstring encoded = TrimWhitespace(Utf8ToWide(protectedText.c_str()));
+        std::wstring const prefix = L"BBC-LAUNCHER-AUTH-V1";
+        if (encoded.rfind(prefix, 0) == 0)
+        {
+            encoded.erase(0, prefix.size());
+            encoded = TrimWhitespace(encoded);
+        }
+        if (encoded.empty())
+        {
+            return false;
+        }
+
+        IBuffer protectedBuffer = CryptographicBuffer::DecodeFromBase64String(hstring(encoded));
+        DataProtectionProvider provider;
+        IBuffer plainBuffer = provider.UnprotectAsync(protectedBuffer).get();
+        std::wstring plain = CryptographicBuffer::ConvertBinaryToString(
+            BinaryStringEncoding::Utf8,
+            plainBuffer).c_str();
+        json = WideToUtf8(plain);
+        return !json.empty();
+    }
+    catch (hresult_error const& ex)
+    {
+        WriteLogF(L"AUTH token unprotect failed hr=0x%08X", static_cast<unsigned int>(ex.code()));
+    }
+    catch (...)
+    {
+        WriteLogW(L"AUTH token unprotect failed with unknown exception");
     }
 
+    return false;
+}
+
+static bool TryParseAuthSessionJson(std::string const& json, MinecraftAuthSession& session)
+{
     std::wstring username;
     std::wstring uuid;
     std::wstring accessToken;
@@ -3990,7 +4194,6 @@ static bool TryLoadCachedAuthSession(std::wstring const& localRoot, MinecraftAut
         uuid.empty() ||
         accessToken.empty())
     {
-        WriteLogW(L"AUTH cached session file is incomplete; sign-in required");
         return false;
     }
 
@@ -4005,10 +4208,53 @@ static bool TryLoadCachedAuthSession(std::wstring const& localRoot, MinecraftAut
     }
     if (session.clientId.empty())
     {
-        session.clientId = ResolveMicrosoftClientId();
+        session.clientId = L"";
     }
     session.online = true;
-    WriteLogF(L"AUTH using cached Minecraft session username=%s uuid=%s", session.username.c_str(), session.uuid.c_str());
+    return true;
+}
+
+static bool TryLoadCachedAuthSession(std::wstring const& localRoot, MinecraftAuthSession& session)
+{
+    if (FileExists(localRoot + L"\\force-account-signin"))
+    {
+        WriteLogW(L"AUTH force-account-signin present; cached session ignored");
+        DeleteFileW((localRoot + L"\\force-account-signin").c_str());
+        DeleteFileW(AuthSessionPath(localRoot).c_str());
+        DeleteFileW(ProtectedAuthSessionPath(localRoot).c_str());
+        return false;
+    }
+
+    std::string protectedText;
+    std::string json;
+    if (ReadSmallTextFileUtf8(ProtectedAuthSessionPath(localRoot), protectedText) &&
+        UnprotectAuthSessionJson(protectedText, json) &&
+        TryParseAuthSessionJson(json, session))
+    {
+        WriteLogF(L"AUTH using protected cached Minecraft session username=%s uuid=%s", session.username.c_str(), session.uuid.c_str());
+        if (session.clientId.empty())
+        {
+            session.clientId = ResolveMicrosoftClientId(localRoot);
+        }
+        return true;
+    }
+
+    if (!ReadSmallTextFileUtf8(AuthSessionPath(localRoot), json))
+    {
+        return false;
+    }
+    if (!TryParseAuthSessionJson(json, session))
+    {
+        WriteLogW(L"AUTH cached session file is incomplete; sign-in required");
+        return false;
+    }
+
+    WriteLogF(L"AUTH migrated legacy plaintext Minecraft session username=%s uuid=%s", session.username.c_str(), session.uuid.c_str());
+    if (session.clientId.empty())
+    {
+        session.clientId = ResolveMicrosoftClientId(localRoot);
+    }
+    SaveAuthSession(localRoot, session);
     return true;
 }
 
@@ -4022,7 +4268,22 @@ static void SaveAuthSession(std::wstring const& localRoot, MinecraftAuthSession 
         "  \"xuid\":\"" + JsonEscape(WideToUtf8(session.xuid)) + "\",\r\n"
         "  \"clientId\":\"" + JsonEscape(WideToUtf8(session.clientId)) + "\"\r\n"
         "}\r\n";
-    WriteTextFileUtf8(AuthSessionPath(localRoot), json);
+    std::string protectedText;
+    if (!ProtectAuthSessionJson(json, protectedText))
+    {
+        WriteLogW(L"AUTH protected session cache not saved; refusing plaintext token cache");
+        return;
+    }
+
+    if (WriteTextFileUtf8(ProtectedAuthSessionPath(localRoot), protectedText + "\r\n"))
+    {
+        DeleteFileW(AuthSessionPath(localRoot).c_str());
+        WriteLogW(L"AUTH protected Minecraft session saved");
+    }
+    else
+    {
+        WriteLogW(L"AUTH protected session cache write failed; refusing plaintext token cache");
+    }
 }
 
 static bool TryReadXboxToken(JsonObject const& json, XboxAuthToken& token)
@@ -4432,6 +4693,7 @@ static void SendAuthBridgeResponse(SOCKET client, std::string const& body)
 
 static bool AcquireMicrosoftLiveOAuthTokenManual(
     CoreWindow const& window,
+    std::wstring const& clientId,
     std::wstring const& authorizeUrl,
     std::wstring& microsoftAccessToken,
     std::wstring& error)
@@ -4590,7 +4852,7 @@ static bool AcquireMicrosoftLiveOAuthTokenManual(
 
     WriteLogW(L"AUTH manual OAuth bridge received code; exchanging for Microsoft token");
     return ExchangeMicrosoftLiveOAuthCode(
-        kMinecraftLauncherTestClientId,
+        clientId,
         submittedCode,
         microsoftAccessToken,
         error);
@@ -4617,7 +4879,7 @@ static bool AcquireMicrosoftLiveOAuthToken(
     std::wstring authorizeUrlWide = Utf8ToWide(authorizeUrl.c_str());
     if (!IsTruthyEnvironment(L"MINECRAFT_XBOX_ENABLE_EMBEDDED_WEB_SIGNIN", false))
     {
-        return AcquireMicrosoftLiveOAuthTokenManual(window, authorizeUrlWide, microsoftAccessToken, error);
+        return AcquireMicrosoftLiveOAuthTokenManual(window, clientId, authorizeUrlWide, microsoftAccessToken, error);
     }
 
     WebAuthenticationResult result = WebAuthenticationBroker::AuthenticateAsync(
@@ -4662,8 +4924,13 @@ static bool SignInMinecraftAccount(
     MinecraftAuthSession& session,
     std::wstring& error)
 {
-    session.clientId = ResolveMicrosoftClientId();
-    WriteLogF(L"AUTH sign-in starting clientId=%s", session.clientId.c_str());
+    session.clientId = ResolveMicrosoftClientId(localRoot);
+    WriteLogF(L"AUTH sign-in starting clientIdConfigured=%d", session.clientId.empty() ? 0 : 1);
+    if (session.clientId.empty())
+    {
+        error = L"Microsoft client ID is not configured. Set MINECRAFT_XBOX_MICROSOFT_CLIENT_ID or create LocalState\\microsoft-client-id.txt.";
+        return false;
+    }
 
     std::wstring microsoftAccessToken;
     bool microsoftTokenAcquired = false;
@@ -4672,8 +4939,7 @@ static bool SignInMinecraftAccount(
         FileExists(localRoot + L"\\force-device-code-signin");
     bool useWebSignIn =
         !forceDeviceCode &&
-        (IsMinecraftLauncherTestClientId(session.clientId) ||
-            IsTruthyEnvironment(L"MINECRAFT_XBOX_ENABLE_WEB_ACCOUNT_SIGNIN", false) ||
+        (IsTruthyEnvironment(L"MINECRAFT_XBOX_ENABLE_WEB_ACCOUNT_SIGNIN", false) ||
             FileExists(localRoot + L"\\enable-web-account-signin"));
     if (useWebSignIn)
     {
@@ -4682,10 +4948,6 @@ static bool SignInMinecraftAccount(
         if (!microsoftTokenAcquired)
         {
             WriteLogF(L"AUTH Microsoft web sign-in failed: %s", error.c_str());
-            if (IsMinecraftLauncherTestClientId(session.clientId))
-            {
-                return false;
-            }
             WriteLogW(L"AUTH trying device-code fallback for non-default client id");
         }
     }
@@ -4753,20 +5015,26 @@ static bool SignInMinecraftAccount(
 static MinecraftAuthSession ResolveMinecraftAuthSession(CoreWindow const& window, std::wstring const& localRoot)
 {
     MinecraftAuthSession session = {};
-    session.clientId = ResolveMicrosoftClientId();
+    session.clientId = ResolveMicrosoftClientId(localRoot);
 #if defined(MINECRAFT_XBOX_DISABLE_ACCOUNT_SIGNIN_BUILD)
     WriteLogW(L"AUTH disabled by build flag; using offline placeholders");
     return session;
 #endif
     bool signInEnabled =
-        IsTruthyEnvironment(L"MINECRAFT_XBOX_ENABLE_ACCOUNT_SIGNIN", false) ||
+        IsTruthyEnvironment(L"MINECRAFT_XBOX_ENABLE_ACCOUNT_SIGNIN", true) ||
         FileExists(localRoot + L"\\enable-account-signin");
+    if (FileExists(localRoot + L"\\disable-account-signin"))
+    {
+        signInEnabled = false;
+    }
     WriteLogF(
-        L"AUTH resolve enabled=%d marker=%d cachedSession=%d clientId=%s",
+        L"AUTH resolve enabled=%d marker=%d disableMarker=%d protectedCachedSession=%d legacyCachedSession=%d clientIdConfigured=%d",
         signInEnabled ? 1 : 0,
         FileExists(localRoot + L"\\enable-account-signin") ? 1 : 0,
+        FileExists(localRoot + L"\\disable-account-signin") ? 1 : 0,
+        FileExists(ProtectedAuthSessionPath(localRoot)) ? 1 : 0,
         FileExists(AuthSessionPath(localRoot)) ? 1 : 0,
-        session.clientId.c_str());
+        session.clientId.empty() ? 0 : 1);
     if (!signInEnabled)
     {
         WriteLogW(L"AUTH disabled for this build; using offline placeholders");
@@ -4836,8 +5104,11 @@ struct MinecraftLaunchProfile
     std::wstring id;
     std::wstring root;
     std::wstring label;
+    std::wstring baseVersion;
     std::wstring modLoader;
 };
+
+static std::wstring InferBaseMinecraftVersion(std::wstring const& version);
 
 static std::wstring ReadProfileVersion(std::wstring const& profileRoot, std::wstring const& fallback)
 {
@@ -4850,6 +5121,28 @@ static std::wstring ReadProfileVersion(std::wstring const& profileRoot, std::wst
     }
 
     return fallback;
+}
+
+static std::wstring ReadProfileBaseMinecraftVersion(std::wstring const& profileRoot, std::wstring const& profileId)
+{
+    std::string json;
+    std::wstring baseVersion;
+    if (ReadSmallTextFileUtf8(profileRoot + L"\\staging-summary.json", json) &&
+        TryReadJsonString(json, "BaseMinecraftVersion", baseVersion) &&
+        !baseVersion.empty())
+    {
+        return baseVersion;
+    }
+
+    json.clear();
+    if (ReadSmallTextFileUtf8(profileRoot + L"\\download-manifest.json", json) &&
+        TryReadJsonString(json, "MinecraftVersion", baseVersion) &&
+        !baseVersion.empty())
+    {
+        return baseVersion;
+    }
+
+    return InferBaseMinecraftVersion(profileId);
 }
 
 static std::wstring ResolveStagedMainClass(std::wstring const& profileRoot, std::wstring const& minecraftVersion)
@@ -5891,6 +6184,7 @@ static void CollectMinecraftLaunchProfiles(std::wstring const& localRoot, std::v
                 MinecraftLaunchProfile profile = {};
                 profile.root = root;
                 profile.id = ReadProfileVersion(root, name);
+                profile.baseVersion = ReadProfileBaseMinecraftVersion(root, profile.id);
                 profile.modLoader = ReadProfileModLoader(root, profile.id);
                 profile.label = ReadProfileDisplayName(root, profile.id, profile.modLoader);
                 profiles.push_back(profile);
@@ -5908,6 +6202,7 @@ static void CollectMinecraftLaunchProfiles(std::wstring const& localRoot, std::v
         MinecraftLaunchProfile profile = {};
         profile.root = localRoot;
         profile.id = ReadProfileVersion(localRoot, L"1.21.1");
+        profile.baseVersion = ReadProfileBaseMinecraftVersion(localRoot, profile.id);
         profile.modLoader = ReadProfileModLoader(localRoot, profile.id);
         profile.label = ReadProfileDisplayName(localRoot, profile.id, profile.modLoader);
         profiles.push_back(profile);
@@ -5980,32 +6275,37 @@ static MinecraftLaunchProfile PickMinecraftLaunchProfileInteractive(CoreWindow c
         }
     }
 
-    try
+    auto showPagedChoice =
+        [&](std::wstring const& prompt, std::vector<std::wstring> const& labels, int preferredIndex) -> int
     {
-        size_t page = 0;
-        constexpr size_t kProfilesPerPage = 2;
+        if (labels.empty())
+        {
+            return -1;
+        }
+
+        constexpr size_t kChoicesPerPage = 2;
+        size_t page = preferredIndex > 0 ? static_cast<size_t>(preferredIndex) / kChoicesPerPage : 0;
         while (true)
         {
-            size_t start = page * kProfilesPerPage;
-            if (start >= profiles.size())
+            size_t start = page * kChoicesPerPage;
+            if (start >= labels.size())
             {
                 page = 0;
                 start = 0;
             }
 
-            size_t count = std::min(kProfilesPerPage, profiles.size() - start);
-            bool hasNext = start + count < profiles.size();
+            size_t count = std::min(kChoicesPerPage, labels.size() - start);
+            bool hasNext = start + count < labels.size();
             bool hasBack = page > 0;
             std::wstring nextLabel = L"More...";
             std::wstring backLabel = L"Back";
 
-            MessageDialog dialog(L"Choose the Minecraft version to launch.");
+            MessageDialog dialog{ hstring(prompt) };
             int defaultIndex = 0;
             for (size_t i = 0; i < count; ++i)
             {
-                MinecraftLaunchProfile const& profile = profiles[start + i];
-                dialog.Commands().Append(UICommand(profile.label));
-                if (profile.id == savedId)
+                dialog.Commands().Append(UICommand(labels[start + i]));
+                if (preferredIndex >= 0 && static_cast<size_t>(preferredIndex) == start + i)
                 {
                     defaultIndex = static_cast<int>(i);
                 }
@@ -6033,18 +6333,107 @@ static MinecraftLaunchProfile PickMinecraftLaunchProfileInteractive(CoreWindow c
                 continue;
             }
 
-            for (auto const& profile : profiles)
+            for (size_t i = 0; i < count; ++i)
             {
-                if (label == profile.label)
+                if (label == labels[start + i])
                 {
-                    WriteLogF(L"Selected Minecraft launch profile %s root=%s", profile.label.c_str(), profile.root.c_str());
-                    WriteTextFileUtf8(localRoot + L"\\selected-minecraft-profile.txt", WideToUtf8(profile.id));
-                    return profile;
+                    return static_cast<int>(start + i);
                 }
             }
 
-            break;
+            return -1;
         }
+    };
+
+    try
+    {
+        std::vector<std::wstring> baseVersions;
+        for (auto const& profile : profiles)
+        {
+            std::wstring baseVersion = profile.baseVersion.empty() ? profile.id : profile.baseVersion;
+            if (std::find(baseVersions.begin(), baseVersions.end(), baseVersion) == baseVersions.end())
+            {
+                baseVersions.push_back(baseVersion);
+            }
+        }
+
+        std::sort(baseVersions.begin(), baseVersions.end());
+
+        int preferredBaseIndex = 0;
+        for (size_t i = 0; i < profiles.size(); ++i)
+        {
+            if (profiles[i].id == savedId)
+            {
+                std::wstring baseVersion = profiles[i].baseVersion.empty() ? profiles[i].id : profiles[i].baseVersion;
+                for (size_t j = 0; j < baseVersions.size(); ++j)
+                {
+                    if (baseVersions[j] == baseVersion)
+                    {
+                        preferredBaseIndex = static_cast<int>(j);
+                        break;
+                    }
+                }
+                break;
+            }
+        }
+
+        int baseIndex = showPagedChoice(L"Choose the Minecraft version to launch.", baseVersions, preferredBaseIndex);
+        if (baseIndex < 0 || static_cast<size_t>(baseIndex) >= baseVersions.size())
+        {
+            throw hresult_error(E_FAIL);
+        }
+
+        std::wstring selectedBaseVersion = baseVersions[static_cast<size_t>(baseIndex)];
+        std::vector<size_t> matchingProfiles;
+        for (size_t i = 0; i < profiles.size(); ++i)
+        {
+            std::wstring baseVersion = profiles[i].baseVersion.empty() ? profiles[i].id : profiles[i].baseVersion;
+            if (baseVersion == selectedBaseVersion)
+            {
+                matchingProfiles.push_back(i);
+            }
+        }
+
+        if (matchingProfiles.empty())
+        {
+            throw hresult_error(E_FAIL);
+        }
+
+        std::sort(matchingProfiles.begin(), matchingProfiles.end(), [&](size_t a, size_t b)
+        {
+            return profiles[a].label < profiles[b].label;
+        });
+
+        size_t selectedProfileIndex = matchingProfiles[0];
+        if (matchingProfiles.size() > 1)
+        {
+            std::vector<std::wstring> loaderLabels;
+            int preferredLoaderIndex = 0;
+            for (size_t i = 0; i < matchingProfiles.size(); ++i)
+            {
+                MinecraftLaunchProfile const& profile = profiles[matchingProfiles[i]];
+                loaderLabels.push_back(profile.modLoader.empty() ? profile.label : profile.modLoader);
+                if (profile.id == savedId)
+                {
+                    preferredLoaderIndex = static_cast<int>(i);
+                }
+            }
+
+            int loaderIndex = showPagedChoice(
+                L"Choose mod loader for Minecraft " + selectedBaseVersion + L".",
+                loaderLabels,
+                preferredLoaderIndex);
+            if (loaderIndex < 0 || static_cast<size_t>(loaderIndex) >= matchingProfiles.size())
+            {
+                throw hresult_error(E_FAIL);
+            }
+            selectedProfileIndex = matchingProfiles[static_cast<size_t>(loaderIndex)];
+        }
+
+        MinecraftLaunchProfile const& profile = profiles[selectedProfileIndex];
+        WriteLogF(L"Selected Minecraft launch profile %s root=%s", profile.label.c_str(), profile.root.c_str());
+        WriteTextFileUtf8(localRoot + L"\\selected-minecraft-profile.txt", WideToUtf8(profile.id));
+        return profile;
     }
     catch (hresult_error const& ex)
     {
@@ -8465,6 +8854,9 @@ static bool RunNativeMinecraft(CoreWindow const& window)
         return false;
     }
 
+    MinecraftAuthSession authSession = ResolveMinecraftAuthSession(window, localRoot);
+    ResolveLaunchResolution(window, localRoot);
+
     int width = g_launchWidth;
     int height = g_launchHeight;
     int surfaceWidth = g_surfaceWidth > 0 ? g_surfaceWidth : width;
@@ -8518,8 +8910,6 @@ static bool RunNativeMinecraft(CoreWindow const& window)
         return true;
     }
 
-    MinecraftAuthSession authSession = ResolveMinecraftAuthSession(window, localRoot);
-
     std::wstring profileRoot = launchProfile.root;
     std::wstring minecraftVersion = ResolveStagedMinecraftVersion(profileRoot);
     std::wstring baseMinecraftVersion = ResolveStagedBaseMinecraftVersion(profileRoot, minecraftVersion);
@@ -8532,7 +8922,6 @@ static bool RunNativeMinecraft(CoreWindow const& window)
     std::wstring lowerMainClass = ToLowerInvariant(mainClass);
     std::wstring lowerModLoader = ToLowerInvariant(launchProfile.modLoader);
     bool neoforgeProfile =
-        lowerMainClass.find(L"bootstraplauncher") != std::wstring::npos ||
         lowerModLoader.find(L"neoforge") != std::wstring::npos;
     bool profileLooksModded =
         !launchProfile.modLoader.empty() ||
@@ -8540,12 +8929,14 @@ static bool RunNativeMinecraft(CoreWindow const& window)
         lowerMainClass.find(L"forge") != std::wstring::npos ||
         lowerMainClass.find(L"quilt") != std::wstring::npos ||
         lowerMainClass.find(L"launchwrapper") != std::wstring::npos ||
+        lowerMainClass.find(L"bootstraplauncher") != std::wstring::npos ||
         neoforgeProfile;
     bool fabricProfile = lowerMainClass.find(L"fabric") != std::wstring::npos ||
         lowerModLoader.find(L"fabric") != std::wstring::npos;
     bool forgeProfile = !neoforgeProfile &&
         (lowerMainClass.find(L"launchwrapper") != std::wstring::npos ||
             lowerMainClass.find(L"forge") != std::wstring::npos ||
+            lowerMainClass.find(L"bootstraplauncher") != std::wstring::npos ||
             lowerModLoader.find(L"forge") != std::wstring::npos);
     bool includeBaseVersionModLibrary = !profileLooksModded;
 
@@ -8623,6 +9014,7 @@ static bool RunNativeMinecraft(CoreWindow const& window)
     std::wstring xboxGlfw = ResolvePackageOrLocalFile(localRoot, packageRoot, L"native\\xbox-glfw.dll");
     std::wstring xboxOpenAl = ResolvePackageOrLocalFile(localRoot, packageRoot, L"native\\xbox-openal.dll");
     std::wstring patchJar = ResolvePackageOrLocalFile(localRoot, packageRoot, L"native\\xbox-jdk-patch.jar");
+    std::wstring linkPatchJar = ResolvePackageOrLocalFile(localRoot, packageRoot, L"native\\xbox-jdk-link-patch.jar");
     std::wstring lwjgl2PatchAgent = ResolvePackageOrLocalFile(localRoot, packageRoot, L"native\\xbox-lwjgl2-patch-agent.jar");
     std::wstring modernLanAgent = ResolvePackageOrLocalFile(localRoot, packageRoot, L"native\\xbox-modern-lan-agent.jar");
     std::wstring fabricLanDiscoveryMod = ResolvePackageOrLocalFile(localRoot, packageRoot, L"native\\xbox-lan-discovery-fabric.jar");
@@ -8661,6 +9053,8 @@ static bool RunNativeMinecraft(CoreWindow const& window)
 #endif
     WriteLogF(L"Minecraft launch xboxGlfw=%s", xboxGlfw.empty() ? L"<missing>" : xboxGlfw.c_str());
     WriteLogF(L"Minecraft launch xboxOpenAl=%s", xboxOpenAl.empty() ? L"<missing>" : xboxOpenAl.c_str());
+    WriteLogF(L"Minecraft launch jdkPatchJar=%s", patchJar.empty() ? L"<missing>" : patchJar.c_str());
+    WriteLogF(L"Minecraft launch jdkLinkPatchJar=%s", linkPatchJar.empty() ? L"<missing>" : linkPatchJar.c_str());
     if (legacyMinecraftArgs)
     {
         WriteLogF(L"Minecraft launch lwjgl2PatchAgent=%s", lwjgl2PatchAgent.empty() ? L"<missing>" : lwjgl2PatchAgent.c_str());
@@ -8747,13 +9141,21 @@ static bool RunNativeMinecraft(CoreWindow const& window)
     }
     if (neoforgeProfile)
     {
-        ForceNeoForgeEarlyWindowDisabled(gameDir);
+        ForceModLauncherEarlyWindowDisabled(gameDir, L"NeoForge");
+    }
+    else if (forgeProfile && !legacyMinecraftArgs)
+    {
+        ForceModLauncherEarlyWindowDisabled(gameDir, L"Forge");
     }
 
     bool controlifyStaged = HasStagedMod(gameDir, L"controlify");
     bool controllableStaged = HasStagedMod(gameDir, L"controllable");
     bool legacy4JStaged = HasStagedMod(gameDir, L"Legacy4J");
     bool cobblemonStaged = HasStagedMod(gameDir, L"cobblemon");
+    if (controlifyStaged)
+    {
+        ForceControlifyGlfwOnlyConfig(gameDir);
+    }
     bool legacyControllableSyntheticController = legacyMinecraftArgs && controllableStaged;
     bool controllerModStaged =
         controlifyStaged ||
@@ -8777,6 +9179,7 @@ static bool RunNativeMinecraft(CoreWindow const& window)
     {
         WriteLogW(L"GLFW controller mouse mode disabled for legacy Controllable; Controllable owns pointer mode");
     }
+    ApplyGamepadMouseSettings(localRoot);
 
     if (!SetCurrentDirectoryW(gameDir.c_str()))
     {
@@ -8815,6 +9218,15 @@ static bool RunNativeMinecraft(CoreWindow const& window)
     SetEnvironmentVariableW(L"MESA_LOADER_DRIVER_OVERRIDE", L"d3d12");
     SetEnvironmentVariableW(L"MESA_FMALLOC_CACHE_FILE", (ParentDirectory(mesaDir) + L"\\mesa-fmalloc-java.swap").c_str());
     SetEnvironmentVariableW(L"MESA_FMALLOC_CACHE_MB", L"512");
+    bool creativeSearchMesaSafetyMode = IsCreativeSearchMesaRiskVersion(baseMinecraftVersion);
+    SetEnvironmentVariableW(L"mesa_glthread", creativeSearchMesaSafetyMode ? L"false" : nullptr);
+    SetEnvironmentVariableW(L"MESA_GLTHREAD", creativeSearchMesaSafetyMode ? L"false" : nullptr);
+    SetEnvironmentVariableW(L"MESA_SHADER_CACHE_DISABLE", creativeSearchMesaSafetyMode ? L"true" : nullptr);
+    SetEnvironmentVariableW(L"GALLIUM_THREAD", creativeSearchMesaSafetyMode ? L"0" : nullptr);
+    WriteLogF(
+        L"Creative search Mesa safety mode baseVersion=%s enabled=%d",
+        baseMinecraftVersion.c_str(),
+        creativeSearchMesaSafetyMode ? 1 : 0);
     PrependEnvironmentPath({ serverDir, javaBin, profileNativeDir, nativeDir, mesaDir });
 
     WriteLogW(legacyMinecraftArgs
@@ -8901,6 +9313,7 @@ static bool RunNativeMinecraft(CoreWindow const& window)
     std::vector<std::string> optionText;
     optionText.reserve(48 + invocationProfileJvmArgs.size());
     optionText.emplace_back("-Xrs");
+    optionText.emplace_back(WideToUtf8(L"-XX:ErrorFile=" + logsDir + L"\\hs_err_pid%p.log"));
     bool fourKLaunch =
         width >= 3840 ||
         height >= 2160 ||
@@ -8960,9 +9373,19 @@ static bool RunNativeMinecraft(CoreWindow const& window)
     {
         WriteLogW(L"JVM GC logging disabled; set MINECRAFT_XBOX_ENABLE_GC_LOG=1 to enable diagnostics");
     }
-    if (javaRuntimeMajor >= 9 && !patchJar.empty())
+    if (javaRuntimeMajor >= 9 && javaRuntimeMajor < 21 && !patchJar.empty())
     {
         optionText.emplace_back(WideToUtf8(L"--patch-module=java.base=" + patchJar));
+        WriteLogW(L"JDK base filesystem patch enabled for Java 9-20 runtime");
+    }
+    else if (javaRuntimeMajor >= 21 && !linkPatchJar.empty())
+    {
+        optionText.emplace_back(WideToUtf8(L"--patch-module=java.base=" + linkPatchJar));
+        WriteLogW(L"JDK link-support filesystem patch enabled for Java 21+ runtime");
+    }
+    else if (javaRuntimeMajor >= 21 && !patchJar.empty())
+    {
+        WriteLogW(L"JDK base filesystem patch skipped for Java 21+ runtime; Java 21 link patch missing");
     }
     if (legacyMinecraftArgs && !lwjgl2PatchAgent.empty())
     {
@@ -9434,6 +9857,403 @@ static void RenderDownloadStatusFrame(uint32_t frame)
     SafeSwapBuffers(g_eglState.swapBuffers, g_eglState.display, g_eglState.surface);
 }
 
+static std::wstring CurrentLocalStatePath()
+{
+    try
+    {
+        return ApplicationData::Current().LocalFolder().Path().c_str();
+    }
+    catch (...)
+    {
+        return std::wstring();
+    }
+}
+
+static std::wstring PointerDeviceTypeName(PointerDeviceType type)
+{
+    switch (type)
+    {
+    case PointerDeviceType::Mouse:
+        return L"mouse";
+    case PointerDeviceType::Pen:
+        return L"pen";
+    case PointerDeviceType::Touch:
+        return L"touch";
+    default:
+        return L"unknown";
+    }
+}
+
+static void LogPointerEvent(wchar_t const* eventName, PointerEventArgs const& args)
+{
+    PointerPoint point = args.CurrentPoint();
+    Point position = point.Position();
+    PointerPointProperties properties = point.Properties();
+    std::wstring pointerType = L"unknown";
+    try
+    {
+        PointerDevice device = PointerDevice::GetPointerDevice(point.PointerId());
+        if (device)
+        {
+            pointerType = PointerDeviceTypeName(device.PointerDeviceType());
+        }
+    }
+    catch (hresult_error const& ex)
+    {
+        WriteLogF(
+            L"MOUSETEST pointer device lookup failed id=%u hr=0x%08X",
+            point.PointerId(),
+            static_cast<unsigned int>(ex.code()));
+    }
+
+    WriteLogF(
+        L"MOUSETEST %s id=%u type=%s x=%.1f y=%.1f wheel=%d left=%d right=%d middle=%d x1=%d x2=%d",
+        eventName,
+        point.PointerId(),
+        pointerType.c_str(),
+        position.X,
+        position.Y,
+        properties.MouseWheelDelta(),
+        properties.IsLeftButtonPressed() ? 1 : 0,
+        properties.IsRightButtonPressed() ? 1 : 0,
+        properties.IsMiddleButtonPressed() ? 1 : 0,
+        properties.IsXButton1Pressed() ? 1 : 0,
+        properties.IsXButton2Pressed() ? 1 : 0);
+}
+
+static bool MousePointerTestEnabled()
+{
+    std::wstring localRoot = CurrentLocalStatePath();
+    if (localRoot.empty())
+    {
+        return IsTruthyEnvironment(L"MINECRAFT_XBOX_MOUSE_POINTER_TEST", false);
+    }
+
+    return FileExists(localRoot + L"\\enable-mouse-test") ||
+        IsTruthyEnvironment(L"MINECRAFT_XBOX_MOUSE_POINTER_TEST", false);
+}
+
+struct GameInputMouseProbeState
+{
+    std::atomic<uint64_t> callbackCount{ 0 };
+};
+
+static void LogGameInputMouseReading(
+    const wchar_t* source,
+    IGameInputReading* reading,
+    bool& hasLast,
+    GameInputMouseState& lastState)
+{
+    if (!reading)
+    {
+        WriteLogF(L"GAMEINPUT %s reading=null", source);
+        return;
+    }
+
+    GameInputKind kind = reading->GetInputKind();
+    GameInputMouseState state = {};
+    bool gotMouseState = reading->GetMouseState(&state);
+    if (!gotMouseState)
+    {
+        WriteLogF(
+            L"GAMEINPUT %s no mouse state kind=0x%08X timestamp=%llu",
+            source,
+            static_cast<unsigned int>(kind),
+            static_cast<unsigned long long>(reading->GetTimestamp()));
+        return;
+    }
+
+    long long deltaX = hasLast ? static_cast<long long>(state.positionX - lastState.positionX) : 0;
+    long long deltaY = hasLast ? static_cast<long long>(state.positionY - lastState.positionY) : 0;
+    long long deltaWheelX = hasLast ? static_cast<long long>(state.wheelX - lastState.wheelX) : 0;
+    long long deltaWheelY = hasLast ? static_cast<long long>(state.wheelY - lastState.wheelY) : 0;
+    bool changed = !hasLast ||
+        state.positionX != lastState.positionX ||
+        state.positionY != lastState.positionY ||
+        state.wheelX != lastState.wheelX ||
+        state.wheelY != lastState.wheelY ||
+        state.buttons != lastState.buttons;
+
+    if (changed)
+    {
+        WriteLogF(
+            L"GAMEINPUT %s kind=0x%08X timestamp=%llu pos=(%lld,%lld) delta=(%lld,%lld) wheel=(%lld,%lld) wheelDelta=(%lld,%lld) buttons=0x%08X",
+            source,
+            static_cast<unsigned int>(kind),
+            static_cast<unsigned long long>(reading->GetTimestamp()),
+            static_cast<long long>(state.positionX),
+            static_cast<long long>(state.positionY),
+            deltaX,
+            deltaY,
+            static_cast<long long>(state.wheelX),
+            static_cast<long long>(state.wheelY),
+            deltaWheelX,
+            deltaWheelY,
+            static_cast<unsigned int>(state.buttons));
+    }
+
+    lastState = state;
+    hasLast = true;
+}
+
+static void CALLBACK GameInputMouseReadingCallback(
+    GameInputCallbackToken,
+    void* context,
+    IGameInputReading* reading,
+    bool hasOverrunOccurred)
+{
+    auto* state = static_cast<GameInputMouseProbeState*>(context);
+    uint64_t callbackCount = state ? ++state->callbackCount : 0;
+    GameInputMouseState lastMouseState = {};
+    bool hasLastMouseState = false;
+    WriteLogF(
+        L"GAMEINPUT callback fired count=%llu overrun=%d",
+        static_cast<unsigned long long>(callbackCount),
+        hasOverrunOccurred ? 1 : 0);
+    LogGameInputMouseReading(L"callback", reading, hasLastMouseState, lastMouseState);
+}
+
+static bool RunMousePointerTest(CoreWindow const& window, bool& closed)
+{
+    if (!window)
+    {
+        WriteLogW(L"MOUSETEST failed: no CoreWindow");
+        return false;
+    }
+
+    WriteLogW(L"MOUSETEST starting CoreWindow pointer test; move/click/wheel a USB mouse connected to the Xbox");
+    try
+    {
+        window.PointerCursor(nullptr);
+        WriteLogW(L"MOUSETEST CoreWindow pointer cursor hidden for relative mouse mode");
+    }
+    catch (hresult_error const& ex)
+    {
+        WriteLogF(L"MOUSETEST hiding CoreWindow pointer cursor failed hr=0x%08X", static_cast<unsigned int>(ex.code()));
+    }
+    catch (...)
+    {
+        WriteLogW(L"MOUSETEST hiding CoreWindow pointer cursor failed with unknown exception");
+    }
+
+    try
+    {
+        MouseCapabilities caps;
+        WriteLogF(
+            L"MOUSETEST mouse capabilities present=%d buttons=%u verticalWheel=%d horizontalWheel=%d",
+            caps.MousePresent(),
+            caps.NumberOfButtons(),
+            caps.VerticalWheelPresent(),
+            caps.HorizontalWheelPresent());
+    }
+    catch (hresult_error const& ex)
+    {
+        WriteLogF(L"MOUSETEST mouse capabilities query failed hr=0x%08X", static_cast<unsigned int>(ex.code()));
+    }
+    catch (...)
+    {
+        WriteLogW(L"MOUSETEST mouse capabilities query failed with unknown exception");
+    }
+
+    MouseDevice mouseDevice{ nullptr };
+    event_token rawMoved{};
+    try
+    {
+        mouseDevice = MouseDevice::GetForCurrentView();
+        if (mouseDevice)
+        {
+            rawMoved = mouseDevice.MouseMoved([](MouseDevice const&, MouseEventArgs const& args)
+            {
+                auto delta = args.MouseDelta();
+                WriteLogF(L"MOUSETEST rawmove dx=%d dy=%d", delta.X, delta.Y);
+            });
+            WriteLogW(L"MOUSETEST MouseDevice::MouseMoved handler registered");
+        }
+        else
+        {
+            WriteLogW(L"MOUSETEST MouseDevice::GetForCurrentView returned null");
+        }
+    }
+    catch (hresult_error const& ex)
+    {
+        WriteLogF(L"MOUSETEST MouseDevice handler registration failed hr=0x%08X", static_cast<unsigned int>(ex.code()));
+    }
+    catch (...)
+    {
+        WriteLogW(L"MOUSETEST MouseDevice handler registration failed with unknown exception");
+    }
+
+    winrt::com_ptr<IGameInput> gameInput;
+    GameInputCallbackToken gameInputCallbackToken = GAMEINPUT_INVALID_CALLBACK_TOKEN_VALUE;
+    GameInputMouseProbeState gameInputProbeState;
+    bool gameInputPollHasLast = false;
+    GameInputMouseState gameInputPollLast = {};
+    uint32_t gameInputNoReadingFrames = 0;
+    uint32_t gameInputUnchangedFrames = 0;
+    try
+    {
+        IGameInput* rawGameInput = nullptr;
+        HRESULT hr = GameInputCreate(&rawGameInput);
+        if (SUCCEEDED(hr) && rawGameInput)
+        {
+            gameInput.attach(rawGameInput);
+            WriteLogF(
+                L"GAMEINPUT create ok timestamp=%llu",
+                static_cast<unsigned long long>(gameInput->GetCurrentTimestamp()));
+
+            gameInput->SetFocusPolicy(GameInputExclusiveForegroundInput);
+            WriteLogW(L"GAMEINPUT focus policy set to GameInputExclusiveForegroundInput");
+
+            HRESULT callbackHr = gameInput->RegisterReadingCallback(
+                nullptr,
+                GameInputKindMouse,
+                0.0f,
+                &gameInputProbeState,
+                GameInputMouseReadingCallback,
+                &gameInputCallbackToken);
+            WriteLogF(
+                L"GAMEINPUT RegisterReadingCallback mouse hr=0x%08X token=%llu",
+                static_cast<unsigned int>(callbackHr),
+                static_cast<unsigned long long>(gameInputCallbackToken));
+
+            winrt::com_ptr<IGameInputReading> currentReading;
+            IGameInputReading* rawReading = nullptr;
+            HRESULT readingHr = gameInput->GetCurrentReading(GameInputKindMouse, nullptr, &rawReading);
+            if (SUCCEEDED(readingHr) && rawReading)
+            {
+                currentReading.attach(rawReading);
+                LogGameInputMouseReading(L"initial", currentReading.get(), gameInputPollHasLast, gameInputPollLast);
+            }
+            else
+            {
+                WriteLogF(L"GAMEINPUT initial GetCurrentReading mouse hr=0x%08X", static_cast<unsigned int>(readingHr));
+            }
+        }
+        else
+        {
+            WriteLogF(L"GAMEINPUT create failed hr=0x%08X ptr=%p", static_cast<unsigned int>(hr), rawGameInput);
+            if (rawGameInput)
+            {
+                rawGameInput->Release();
+            }
+        }
+    }
+    catch (...)
+    {
+        WriteLogW(L"GAMEINPUT setup threw unknown exception");
+    }
+
+    auto moved = window.PointerMoved([](CoreWindow const&, PointerEventArgs const& args)
+    {
+        LogPointerEvent(L"move", args);
+    });
+    auto pressed = window.PointerPressed([](CoreWindow const&, PointerEventArgs const& args)
+    {
+        LogPointerEvent(L"press", args);
+    });
+    auto released = window.PointerReleased([](CoreWindow const&, PointerEventArgs const& args)
+    {
+        LogPointerEvent(L"release", args);
+    });
+    auto wheel = window.PointerWheelChanged([](CoreWindow const&, PointerEventArgs const& args)
+    {
+        LogPointerEvent(L"wheel", args);
+    });
+    auto entered = window.PointerEntered([](CoreWindow const&, PointerEventArgs const& args)
+    {
+        LogPointerEvent(L"enter", args);
+    });
+    auto exited = window.PointerExited([](CoreWindow const&, PointerEventArgs const& args)
+    {
+        LogPointerEvent(L"exit", args);
+    });
+
+    auto dispatcher = window.Dispatcher();
+    uint32_t frame = 0;
+    while (!closed)
+    {
+        dispatcher.ProcessEvents(CoreProcessEventsOption::ProcessAllIfPresent);
+        if (gameInput)
+        {
+            winrt::com_ptr<IGameInputReading> currentReading;
+            IGameInputReading* rawReading = nullptr;
+            HRESULT readingHr = gameInput->GetCurrentReading(GameInputKindMouse, nullptr, &rawReading);
+            if (SUCCEEDED(readingHr) && rawReading)
+            {
+                currentReading.attach(rawReading);
+                GameInputMouseState beforeState = gameInputPollLast;
+                bool beforeHasLast = gameInputPollHasLast;
+                LogGameInputMouseReading(L"poll", currentReading.get(), gameInputPollHasLast, gameInputPollLast);
+                if (beforeHasLast &&
+                    beforeState.positionX == gameInputPollLast.positionX &&
+                    beforeState.positionY == gameInputPollLast.positionY &&
+                    beforeState.wheelX == gameInputPollLast.wheelX &&
+                    beforeState.wheelY == gameInputPollLast.wheelY &&
+                    beforeState.buttons == gameInputPollLast.buttons)
+                {
+                    ++gameInputUnchangedFrames;
+                    if ((gameInputUnchangedFrames % 300) == 0)
+                    {
+                        WriteLogF(
+                            L"GAMEINPUT poll unchanged frames=%u pos=(%lld,%lld) wheel=(%lld,%lld) buttons=0x%08X callbacks=%llu",
+                            gameInputUnchangedFrames,
+                            static_cast<long long>(gameInputPollLast.positionX),
+                            static_cast<long long>(gameInputPollLast.positionY),
+                            static_cast<long long>(gameInputPollLast.wheelX),
+                            static_cast<long long>(gameInputPollLast.wheelY),
+                            static_cast<unsigned int>(gameInputPollLast.buttons),
+                            static_cast<unsigned long long>(gameInputProbeState.callbackCount.load()));
+                    }
+                }
+                else
+                {
+                    gameInputUnchangedFrames = 0;
+                }
+            }
+            else
+            {
+                ++gameInputNoReadingFrames;
+                if (gameInputNoReadingFrames == 1 || (gameInputNoReadingFrames % 300) == 0)
+                {
+                    WriteLogF(
+                        L"GAMEINPUT poll GetCurrentReading no mouse reading hr=0x%08X frames=%u callbacks=%llu",
+                        static_cast<unsigned int>(readingHr),
+                        gameInputNoReadingFrames,
+                        static_cast<unsigned long long>(gameInputProbeState.callbackCount.load()));
+                }
+            }
+        }
+        RenderProbeFrame(frame++);
+        Sleep(16);
+    }
+
+    window.PointerMoved(moved);
+    window.PointerPressed(pressed);
+    window.PointerReleased(released);
+    window.PointerWheelChanged(wheel);
+    window.PointerEntered(entered);
+    window.PointerExited(exited);
+    if (mouseDevice)
+    {
+        mouseDevice.MouseMoved(rawMoved);
+    }
+    if (gameInput && gameInputCallbackToken != GAMEINPUT_INVALID_CALLBACK_TOKEN_VALUE)
+    {
+        bool unregistered = gameInput->UnregisterCallback(gameInputCallbackToken, 1000000);
+        WriteLogF(
+            L"GAMEINPUT callback unregister result=%d callbacks=%llu",
+            unregistered ? 1 : 0,
+            static_cast<unsigned long long>(gameInputProbeState.callbackCount.load()));
+    }
+    try
+    {
+        window.PointerCursor(CoreCursor(CoreCursorType::Arrow, 0));
+    }
+    catch (...) {}
+    WriteLogW(L"MOUSETEST stopped");
+    return true;
+}
+
 struct App : implements<App, IFrameworkViewSource, IFrameworkView>
 {
     CoreWindow m_window{ nullptr };
@@ -9498,29 +10318,15 @@ struct App : implements<App, IFrameworkViewSource, IFrameworkView>
         }
 
         WriteLogW(L"Standalone EGL probe skipped for Minecraft launch; xbox-glfw will initialize Mesa first");
+        if (m_window && MousePointerTestEnabled())
+        {
+            WriteLogW(L"Mouse pointer test enabled; skipping Minecraft launch");
+            RunMousePointerTest(m_window, m_closed);
+            return;
+        }
+
         if (m_window)
         {
-            std::wstring localRoot;
-            try
-            {
-                localRoot = ApplicationData::Current().LocalFolder().Path().c_str();
-            }
-            catch (...)
-            {
-                localRoot.clear();
-            }
-
-            if (!localRoot.empty())
-            {
-                ResolveLaunchResolution(m_window, localRoot);
-            }
-            else
-            {
-                LaunchResolutionPreset const& fallback = DefaultLaunchResolutionPreset();
-                g_launchResolutionLabel = fallback.label;
-                ApplyLaunchResolutionEnvironment(fallback.width, fallback.height);
-            }
-
             bool minecraftLaunchPassed = false;
             try
             {

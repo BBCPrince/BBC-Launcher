@@ -20,6 +20,7 @@ import java.nio.file.Path;
  * which is exactly what callers like Mojang's bfp.c and ZipFileSystemProvider need.
  *
  * Activated by:  java.exe --patch-module java.base=xbox-jdk-patch.jar
+ * Java 21+ builds use xbox-jdk-link-patch.jar, which contains only this class.
  */
 class WindowsLinkSupport {
 

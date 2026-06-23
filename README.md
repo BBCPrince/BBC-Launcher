@@ -4,6 +4,8 @@ BBC Launcher, short for Big Block Craft Launcher, is an experimental UWP/Xbox la
 
 This repository is source-only. It does not include Minecraft game files, Mojang assets, Java runtimes, Microsoft account secrets, private signing keys, or paid content. Each builder must download or provide their own legal Minecraft files.
 
+Parts of this project were developed with AI assistance from OpenAI ChatGPT/Codex and then tested and edited by the maintainer.
+
 ## Current Status
 
 The recommended working path is the native CoreWindow package in `native/corewindow-probe`, built through:
@@ -88,13 +90,14 @@ local-test-files\LocalState-MultiVersion\
 ## Useful Docs
 
 - [Build guide](docs/BUILDING.md)
+- [Mod distribution notes](docs/MOD_DISTRIBUTION.md)
 - [Project map](docs/PROJECT_MAP.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)
 
 ## Important Notes
 
-- Do not commit `local-test-files`, downloaded Minecraft files, Java runtimes, signing certificates, or built packages.
+- Do not commit `local-test-files`, downloaded Minecraft files, Java runtimes, signing certificates, built packages, Microsoft client IDs, account session files, access tokens, or local mod jars.
 - The build output name still uses `MinecraftJavaTestFixes` in some places. That is the current native package project name. The installed app display name is BBC Launcher.
 - If the app crashes or shows a black screen, check the logs in the app LocalState folder first:
 

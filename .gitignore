@@ -19,6 +19,10 @@ BundleArtifacts/
 *.log
 *.log.gz
 local.settings.json
+microsoft-client-id.txt
+minecraft-auth-session.json
+minecraft-auth-session.protected
+*.protected
 local-test-files/
 local-test-files/minecraft-localstate-payload.zip
 runtime/

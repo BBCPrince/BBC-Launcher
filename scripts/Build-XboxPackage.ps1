@@ -43,7 +43,7 @@ if (-not $SkipNative) {
     & (Join-Path $PSScriptRoot "Build-NativeBridge.ps1") -Configuration $Configuration | Out-Host
 
     Write-Host ""
-    Write-Host "==> Building Java artifacts (XboxPathProbe.jar + xbox-jdk-patch.jar)" -ForegroundColor Cyan
+    Write-Host "==> Building Java artifacts (XboxPathProbe.jar + JDK patch jars)" -ForegroundColor Cyan
     & (Join-Path $PSScriptRoot "Build-JdkPatch.ps1") | Out-Host
 } else {
     Write-Host "==> Skipping native build (-SkipNative)" -ForegroundColor Yellow
@@ -69,7 +69,7 @@ foreach ($dll in @("graphics_bridge.dll", "Ole32.dll", "Pdh.dll", "xbox-glfw.dll
     }
 }
 
-foreach ($jar in @("XboxPathProbe.jar", "xbox-jdk-patch.jar")) {
+foreach ($jar in @("XboxPathProbe.jar", "xbox-jdk-patch.jar", "xbox-jdk-link-patch.jar")) {
     $path = Join-Path $nativeDir $jar
     if (-not (Test-Path $path)) {
         Write-Warning "Java artifact missing in 'native\': $jar. The MSIX will build but path-probe / toRealPath() patch will be skipped on Xbox."

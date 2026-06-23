@@ -136,24 +136,37 @@ function Add-ManifestEntryUnique {
     })
 }
 
-function Get-NeoForgePrefix {
+function Get-NeoForgeArtifactInfo {
     param([string]$MinecraftVersion)
 
     if ($MinecraftVersion -eq "1.21.1") {
-        return "21.1."
+        return [pscustomobject]@{
+            ArtifactId = "neoforge"
+            VersionPrefix = "21.1."
+            VersionPattern = '^\d+\.\d+\.\d+$'
+        }
     }
 
-    throw "NeoForge prefix is not known for Minecraft $MinecraftVersion"
+    if ($MinecraftVersion -eq "1.20.1") {
+        return [pscustomobject]@{
+            ArtifactId = "forge"
+            VersionPrefix = "1.20.1-47.1."
+            VersionPattern = '^1\.20\.1-47\.1\.\d+$'
+        }
+    }
+
+    throw "NeoForge artifact layout is not known for Minecraft $MinecraftVersion"
 }
 
 function Get-LatestNeoForgeVersion {
     param([string]$MinecraftVersion)
 
-    $prefix = Get-NeoForgePrefix -MinecraftVersion $MinecraftVersion
-    $metadataUrl = "https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml"
+    $info = Get-NeoForgeArtifactInfo -MinecraftVersion $MinecraftVersion
+    $prefix = [string]$info.VersionPrefix
+    $metadataUrl = "https://maven.neoforged.net/releases/net/neoforged/$($info.ArtifactId)/maven-metadata.xml"
     $metadata = [xml](Invoke-WebRequest -Uri $metadataUrl -UseBasicParsing).Content
     $matches = @($metadata.metadata.versioning.versions.version | Where-Object {
-        $_.StartsWith($prefix) -and ($_ -match '^\d+\.\d+\.\d+$')
+        $_.StartsWith($prefix) -and ($_ -match [string]$info.VersionPattern)
     })
     if ($matches.Count -eq 0) {
         throw "No NeoForge versions found for Minecraft $MinecraftVersion"
@@ -162,15 +175,28 @@ function Get-LatestNeoForgeVersion {
     return @($matches | Sort-Object { [int]($_.Substring($prefix.Length)) } | Select-Object -Last 1)[0]
 }
 
+$neoForgeInfo = Get-NeoForgeArtifactInfo -MinecraftVersion $MinecraftVersion
+$neoForgeArtifactId = [string]$neoForgeInfo.ArtifactId
+$loaderSlug = if ($neoForgeArtifactId -eq "forge") { "forge" } else { "neoforge" }
+$loaderName = if ($neoForgeArtifactId -eq "forge") { "Forge" } else { "NeoForge" }
+
 if (-not $NeoForgeVersion) {
     $NeoForgeVersion = Get-LatestNeoForgeVersion -MinecraftVersion $MinecraftVersion
 }
 elseif ($NeoForgeVersion.StartsWith("neoforge-")) {
     $NeoForgeVersion = $NeoForgeVersion.Substring("neoforge-".Length)
 }
+elseif ($NeoForgeVersion.StartsWith("forge-")) {
+    $NeoForgeVersion = $NeoForgeVersion.Substring("forge-".Length)
+}
 
-$neoForgeLauncherVersion = "neoforge-$NeoForgeVersion"
-$profileId = "$MinecraftVersion-neoforge-$NeoForgeVersion"
+if ($neoForgeArtifactId -eq "forge" -and $NeoForgeVersion.StartsWith("$MinecraftVersion-")) {
+    $neoForgeLauncherVersion = "$MinecraftVersion-forge-" + $NeoForgeVersion.Substring($MinecraftVersion.Length + 1)
+}
+else {
+    $neoForgeLauncherVersion = "neoforge-$NeoForgeVersion"
+}
+$profileId = "$MinecraftVersion-$loaderSlug-$NeoForgeVersion"
 
 if ($Clean -and (Test-Path $OutputRoot)) {
     Remove-Item -LiteralPath $OutputRoot -Recurse -Force
@@ -180,10 +206,10 @@ Invoke-RobocopyChecked -Source $BaseProfileRoot -Destination $OutputRoot -ExtraA
     "/XD", "_downloads", "game", "logs", "mods", "mods-library"
 )
 
-$downloadRoot = Join-Path $OutputRoot "_downloads\neoforge"
+$downloadRoot = Join-Path $OutputRoot "_downloads\$loaderSlug"
 New-Item -ItemType Directory -Force -Path $downloadRoot | Out-Null
-$installerUrl = "https://maven.neoforged.net/releases/net/neoforged/neoforge/$NeoForgeVersion/neoforge-$NeoForgeVersion-installer.jar"
-$installerPath = Join-Path $downloadRoot "neoforge-$NeoForgeVersion-installer.jar"
+$installerUrl = "https://maven.neoforged.net/releases/net/neoforged/$neoForgeArtifactId/$NeoForgeVersion/$neoForgeArtifactId-$NeoForgeVersion-installer.jar"
+$installerPath = Join-Path $downloadRoot "$neoForgeArtifactId-$NeoForgeVersion-installer.jar"
 Save-Download -Url $installerUrl -Path $installerPath
 
 $launcherProfilesPath = Join-Path $OutputRoot "launcher_profiles.json"
@@ -191,12 +217,12 @@ Write-Utf8NoBom -Path $launcherProfilesPath -Text '{"profiles":{},"settings":{},
 
 $javaPath = Join-Path $OutputRoot "runtime\jre\bin\java.exe"
 if (-not (Test-Path $javaPath)) {
-    throw "Java runtime missing from NeoForge profile root: $javaPath"
+    throw "Java runtime missing from $loaderName profile root: $javaPath"
 }
 
 & $javaPath -jar $installerPath --installClient $OutputRoot
 if ($LASTEXITCODE -ne 0) {
-    throw "NeoForge installer failed with exit code $LASTEXITCODE"
+    throw "$loaderName installer failed with exit code $LASTEXITCODE"
 }
 
 if (Test-Path $launcherProfilesPath) {
@@ -206,7 +232,24 @@ if (Test-Path $launcherProfilesPath) {
 $neoForgeVersionDir = Join-Path $OutputRoot "versions\$neoForgeLauncherVersion"
 $neoForgeVersionJsonPath = Join-Path $neoForgeVersionDir "$neoForgeLauncherVersion.json"
 if (-not (Test-Path $neoForgeVersionJsonPath)) {
-    throw "NeoForge version json missing after install: $neoForgeVersionJsonPath"
+    $versionsRoot = Join-Path $OutputRoot "versions"
+    $candidate = Get-ChildItem -Path $versionsRoot -Directory -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.Name.IndexOf($NeoForgeVersion, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 -or
+            $_.Name.IndexOf("neoforge", [System.StringComparison]::OrdinalIgnoreCase) -ge 0 -or
+            $_.Name.IndexOf($neoForgeArtifactId, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+        } |
+        Where-Object { Test-Path (Join-Path $_.FullName "$($_.Name).json") } |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -First 1
+
+    if (-not $candidate) {
+        throw "$loaderName version json missing after install: $neoForgeVersionJsonPath"
+    }
+
+    $neoForgeLauncherVersion = $candidate.Name
+    $neoForgeVersionDir = $candidate.FullName
+    $neoForgeVersionJsonPath = Join-Path $neoForgeVersionDir "$neoForgeLauncherVersion.json"
 }
 
 $neoForgeVersionJsonText = Get-Content $neoForgeVersionJsonPath -Raw
@@ -300,32 +343,33 @@ foreach ($library in @($neoForgeVersionJson.libraries)) {
     $neoForgeLibraries.Add($localRelative.Replace("/", "\"))
 }
 
-$neoForgeLibRoot = "libraries\net\neoforged\neoforge\$NeoForgeVersion"
-$neoForgeGeneratedClientJar = "$neoForgeLibRoot\neoforge-$NeoForgeVersion-client.jar"
-$neoForgeUniversalJar = "$neoForgeLibRoot\neoforge-$NeoForgeVersion-universal.jar"
+$neoForgeLibRoot = "libraries\net\neoforged\$neoForgeArtifactId\$NeoForgeVersion"
+$neoForgeGeneratedClientJar = "$neoForgeLibRoot\$neoForgeArtifactId-$NeoForgeVersion-client.jar"
+$neoForgeUniversalJar = "$neoForgeLibRoot\$neoForgeArtifactId-$NeoForgeVersion-universal.jar"
 $generatedClientFullPath = Join-Path $OutputRoot $neoForgeGeneratedClientJar
 $staleProfileJarFullPath = Join-Path $OutputRoot "versions\$neoForgeLauncherVersion\$neoForgeLauncherVersion.jar"
 if (Test-Path $staleProfileJarFullPath) {
     Remove-Item -LiteralPath $staleProfileJarFullPath -Force
 }
 if (-not (Test-Path $generatedClientFullPath)) {
-    throw "NeoForge generated client jar missing: $generatedClientFullPath"
+    throw "$loaderName generated client jar missing: $generatedClientFullPath"
 }
 Add-ManifestEntryUnique `
     -Entries $manifestEntries `
-    -RemoteUrl "generated:neoforge-client" `
+    -RemoteUrl "generated:$loaderSlug-client" `
     -RelativePath $neoForgeGeneratedClientJar
 Add-ManifestEntryUnique `
     -Entries $manifestEntries `
-    -RemoteUrl "https://maven.neoforged.net/releases/net/neoforged/neoforge/$NeoForgeVersion/neoforge-$NeoForgeVersion-universal.jar" `
+    -RemoteUrl "https://maven.neoforged.net/releases/net/neoforged/$neoForgeArtifactId/$NeoForgeVersion/$neoForgeArtifactId-$NeoForgeVersion-universal.jar" `
     -RelativePath $neoForgeUniversalJar
 $neoForgeLibraries.Add($neoForgeGeneratedClientJar)
 $neoForgeLibraries.Add($neoForgeUniversalJar)
 
 $downloadManifestOut = [ordered]@{
     MinecraftVersion = $MinecraftVersion
-    ModLoader = "NeoForge"
+    ModLoader = $loaderName
     NeoForgeVersion = $NeoForgeVersion
+    NeoForgeArtifactId = $neoForgeArtifactId
     NeoForgeProfileVersion = $neoForgeLauncherVersion
     Entries = $manifestEntries
 }
@@ -334,11 +378,12 @@ Write-Utf8NoBom -Path $manifestPath -Text (($downloadManifestOut | ConvertTo-Jso
 $summaryPath = Join-Path $OutputRoot "staging-summary.json"
 $summary = Get-Content $summaryPath -Raw | ConvertFrom-Json
 $summary | Add-Member -NotePropertyName Version -NotePropertyValue $profileId -Force
-$summary | Add-Member -NotePropertyName DisplayName -NotePropertyValue "$MinecraftVersion NeoForge" -Force
+$summary | Add-Member -NotePropertyName DisplayName -NotePropertyValue "$MinecraftVersion $loaderName" -Force
 $summary | Add-Member -NotePropertyName BaseMinecraftVersion -NotePropertyValue $MinecraftVersion -Force
 $summary | Add-Member -NotePropertyName OutputRoot -NotePropertyValue $OutputRoot -Force
-$summary | Add-Member -NotePropertyName ModLoader -NotePropertyValue "NeoForge" -Force
+$summary | Add-Member -NotePropertyName ModLoader -NotePropertyValue $loaderName -Force
 $summary | Add-Member -NotePropertyName NeoForgeVersion -NotePropertyValue $NeoForgeVersion -Force
+$summary | Add-Member -NotePropertyName NeoForgeArtifactId -NotePropertyValue $neoForgeArtifactId -Force
 $summary | Add-Member -NotePropertyName NeoForgeProfileVersion -NotePropertyValue $neoForgeLauncherVersion -Force
 $summary | Add-Member -NotePropertyName LauncherVersionName -NotePropertyValue $neoForgeLauncherVersion -Force
 $summary | Add-Member -NotePropertyName MainClass -NotePropertyValue "cpw.mods.bootstraplauncher.BootstrapLauncher" -Force
@@ -349,9 +394,9 @@ $summary | Add-Member -NotePropertyName NeoForgeLibraries -NotePropertyValue $ne
 Write-Utf8NoBom -Path $summaryPath -Text (($summary | ConvertTo-Json -Depth 8) + "`r`n")
 
 Write-Host ""
-Write-Host "NeoForge profile staged:"
+Write-Host "$loaderName profile staged:"
 Write-Host "  $OutputRoot"
 Write-Host "Minecraft: $MinecraftVersion"
-Write-Host "NeoForge: $NeoForgeVersion"
+Write-Host "$loaderName: $NeoForgeVersion"
 Write-Host "Profile: $profileId"
-Write-Host "NeoForge libraries: $($neoForgeLibraries.Count)"
+Write-Host "$loaderName libraries: $($neoForgeLibraries.Count)"

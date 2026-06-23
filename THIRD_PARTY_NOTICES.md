@@ -13,3 +13,13 @@ This project can build and stage experimental OpenGL-to-D3D12 runtime pieces fro
   - Current local fetch path: `external/sdl-uwp-gl`.
 
 The `external/`, `.tools/`, and `artifacts/` directories are intentionally ignored by git. They are build inputs and outputs, not clean-room launcher source. Do not copy GPL game-port code into this repository unless the whole distribution plan is changed to comply with that license.
+
+## OpenJDK Patch Sources
+
+The JDK patch sources under `native/jdk-patch` include small Xbox/UWP filesystem compatibility patches. Any file copied or adapted from OpenJDK keeps its upstream copyright and GPLv2-with-Classpath-Exception header. Preserve those headers and review the OpenJDK license before distributing modified patch jars.
+
+## Minecraft Mods
+
+This repository does not redistribute third-party Minecraft mod jars. Local mod test files live under `local-test-files\BundledMods` or generated payload folders, both of which are ignored by git.
+
+Some locally tested mods have permissive or LGPL-style licenses, but others restrict redistribution or require original-host distribution only. In particular, do not upload OptiFine or EntityCulling jars to this repository. See `docs\MOD_DISTRIBUTION.md` for public-release guidance.
