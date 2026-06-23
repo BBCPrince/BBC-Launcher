@@ -611,6 +611,54 @@ static bool WriteTextFileUtf8(std::wstring const& path, std::string const& text)
     return ok && written == static_cast<DWORD>(text.size());
 }
 
+static bool WriteEmptyZipFile(std::wstring const& path)
+{
+    EnsureDirectory(ParentDirectory(path));
+    std::wstring nativePath = ToLongWin32Path(path);
+    SetFileAttributesW(nativePath.c_str(), FILE_ATTRIBUTE_NORMAL);
+    DeleteFileW(nativePath.c_str());
+
+    HANDLE file = CreateFile2(
+        nativePath.c_str(),
+        GENERIC_WRITE,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        CREATE_ALWAYS,
+        nullptr);
+    if (file == INVALID_HANDLE_VALUE)
+    {
+        WriteLogF(L"Fabric remap preseed failed to create %s GetLastError=%lu", path.c_str(), GetLastError());
+        return false;
+    }
+
+    static const unsigned char emptyZip[] = {
+        0x50, 0x4B, 0x05, 0x06,
+        0x00, 0x00,
+        0x00, 0x00,
+        0x00, 0x00,
+        0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00
+    };
+    DWORD written = 0;
+    BOOL ok = WriteFile(file, emptyZip, static_cast<DWORD>(sizeof(emptyZip)), &written, nullptr);
+    if (ok)
+    {
+        ok = FlushFileBuffers(file);
+    }
+    CloseHandle(file);
+
+    if (!ok || written != static_cast<DWORD>(sizeof(emptyZip)))
+    {
+        WriteLogF(L"Fabric remap preseed failed to write %s GetLastError=%lu", path.c_str(), GetLastError());
+        DeleteFileW(nativePath.c_str());
+        return false;
+    }
+
+    SetFileAttributesW(nativePath.c_str(), FILE_ATTRIBUTE_NORMAL);
+    return true;
+}
+
 static bool CopyFileContentsFresh(std::wstring const& sourcePath, std::wstring const& destinationPath)
 {
     EnsureDirectory(ParentDirectory(destinationPath));
@@ -8987,15 +9035,51 @@ static bool RunNativeMinecraft(CoreWindow const& window)
             std::wstring remapCacheDir = remappedJarsDir + L"\\minecraft-" +
                 SanitizePathSegment(minecraftVersion) + L"-" +
                 SanitizePathSegment(fabricLoaderVersion);
+            std::wstring clientFinalJar = remapCacheDir + L"\\client-intermediary.jar";
+            std::wstring clientTmpJar = remapCacheDir + L"\\client-intermediary.jar.tmp";
+            std::wstring serverTmpJar = remapCacheDir + L"\\server-intermediary.jar.tmp";
+            bool remapCacheNeedsRefresh =
+                !FileExists(clientFinalJar) ||
+                FileExists(clientTmpJar) ||
+                FileExists(serverTmpJar);
+
+            if (remapCacheNeedsRefresh && DirectoryExists(remapCacheDir))
+            {
+                WriteLogF(L"Refreshing Fabric remap cache dir before launch: %s", remapCacheDir.c_str());
+                bool cleared = DeleteDirectoryContentsRecursive(remapCacheDir);
+                std::wstring nativeRemapCacheDir = ToLongWin32Path(remapCacheDir);
+                SetFileAttributesW(nativeRemapCacheDir.c_str(), FILE_ATTRIBUTE_NORMAL);
+                if (!cleared || !RemoveDirectoryW(nativeRemapCacheDir.c_str()))
+                {
+                    WriteLogF(L"WARN: failed to remove old Fabric remap cache dir %s GetLastError=%lu", remapCacheDir.c_str(), GetLastError());
+                }
+            }
             EnsureDirectory(remapCacheDir);
 
-            std::wstring clientTmpJar = remapCacheDir + L"\\client-intermediary.jar.tmp";
-            SetFileAttributesW(clientTmpJar.c_str(), FILE_ATTRIBUTE_NORMAL);
-            DeleteFileW(clientTmpJar.c_str());
+            if (remapCacheNeedsRefresh)
+            {
+                std::wstring writeProbe = remapCacheDir + L"\\.xbox-write-test";
+                bool writeProbeOk = WriteTextFileUtf8(writeProbe, "ok\n");
+                SetFileAttributesW(ToLongWin32Path(writeProbe).c_str(), FILE_ATTRIBUTE_NORMAL);
+                DeleteFileW(ToLongWin32Path(writeProbe).c_str());
+                WriteLogF(L"Fabric remap cache write probe dir=%s ok=%d", remapCacheDir.c_str(), writeProbeOk ? 1 : 0);
 
-            std::wstring serverTmpJar = remapCacheDir + L"\\server-intermediary.jar.tmp";
-            SetFileAttributesW(serverTmpJar.c_str(), FILE_ATTRIBUTE_NORMAL);
-            DeleteFileW(serverTmpJar.c_str());
+                SetFileAttributesW(clientTmpJar.c_str(), FILE_ATTRIBUTE_NORMAL);
+                DeleteFileW(clientTmpJar.c_str());
+                SetFileAttributesW(serverTmpJar.c_str(), FILE_ATTRIBUTE_NORMAL);
+                DeleteFileW(serverTmpJar.c_str());
+
+                bool clientTmpSeeded = WriteEmptyZipFile(clientTmpJar);
+                bool serverTmpSeeded = WriteEmptyZipFile(serverTmpJar);
+                WriteLogF(
+                    L"Fabric remap temp jars preseeded client=%d server=%d",
+                    clientTmpSeeded ? 1 : 0,
+                    serverTmpSeeded ? 1 : 0);
+            }
+            else
+            {
+                WriteLogF(L"Fabric remap cache already present: %s", clientFinalJar.c_str());
+            }
 
             WriteLogF(L"Fabric remap cache dir=%s", remapCacheDir.c_str());
         }
