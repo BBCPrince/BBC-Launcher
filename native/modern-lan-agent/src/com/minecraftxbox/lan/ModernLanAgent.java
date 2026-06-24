@@ -21,15 +21,12 @@ import org.objectweb.asm.Opcodes;
 public final class ModernLanAgent {
     private static final String DISCOVERY_PATCH_PROPERTY = "minecraft.xbox.lan.discoveryPatch";
     private static final String COBBLEMON_SHOWDOWN_FS_PATCH_PROPERTY = "minecraft.xbox.cobblemon.showdownFsPatch";
-    private static final String ZIPFS_WRITABLE_PATCH_PROPERTY = "minecraft.xbox.zipfsWritablePatch";
     private static final String LAN_DETECTOR_INTERMEDIARY = "net/minecraft/class_1134$class_1135";
     private static final String LAN_DETECTOR_OBFUSCATED = "iqc$a";
     private static final String COBBLEMON_SHOWDOWN_FILE_SYSTEM =
             "com/cobblemon/mod/common/battles/runner/graal/GraalShowdownService$createContext$1";
-    private static final String ZIP_FILE_SYSTEM = "jdk/nio/zipfs/ZipFileSystem";
     private static volatile boolean lanPatchEnabled;
     private static volatile boolean cobblemonShowdownFsPatchEnabled;
-    private static volatile boolean zipFsWritablePatchEnabled;
     private static volatile boolean loggedSocketReady;
 
     private ModernLanAgent() {
@@ -38,15 +35,13 @@ public final class ModernLanAgent {
     public static void premain(String agentArgs, Instrumentation instrumentation) {
         lanPatchEnabled = Boolean.getBoolean(DISCOVERY_PATCH_PROPERTY);
         cobblemonShowdownFsPatchEnabled = Boolean.getBoolean(COBBLEMON_SHOWDOWN_FS_PATCH_PROPERTY);
-        zipFsWritablePatchEnabled = Boolean.getBoolean(ZIPFS_WRITABLE_PATCH_PROPERTY);
-        if (!lanPatchEnabled && !cobblemonShowdownFsPatchEnabled && !zipFsWritablePatchEnabled) {
+        if (!lanPatchEnabled && !cobblemonShowdownFsPatchEnabled) {
             return;
         }
 
         instrumentation.addTransformer(new Transformer(), false);
         log("modern patch agent installed lanPatch=" + lanPatchEnabled
-                + " cobblemonShowdownFsPatch=" + cobblemonShowdownFsPatchEnabled
-                + " zipFsWritablePatch=" + zipFsWritablePatchEnabled);
+                + " cobblemonShowdownFsPatch=" + cobblemonShowdownFsPatchEnabled);
     }
 
     public static void configureLanDetectorSocket(MulticastSocket socket) {
@@ -128,10 +123,6 @@ public final class ModernLanAgent {
         return COBBLEMON_SHOWDOWN_FILE_SYSTEM.equals(className);
     }
 
-    private static boolean isZipFileSystem(String className) {
-        return ZIP_FILE_SYSTEM.equals(className);
-    }
-
     private static final class Transformer implements ClassFileTransformer {
         @Override
         public byte[] transform(
@@ -143,8 +134,7 @@ public final class ModernLanAgent {
             boolean patchLanDetector = lanPatchEnabled && isLanDetector(className);
             boolean patchCobblemonShowdownFs =
                     cobblemonShowdownFsPatchEnabled && isCobblemonShowdownFileSystem(className);
-            boolean patchZipFsWritable = zipFsWritablePatchEnabled && isZipFileSystem(className);
-            if (!patchLanDetector && !patchCobblemonShowdownFs && !patchZipFsWritable) {
+            if (!patchLanDetector && !patchCobblemonShowdownFs) {
                 return null;
             }
 
@@ -158,18 +148,12 @@ public final class ModernLanAgent {
                 if (patchCobblemonShowdownFs) {
                     visitor = new CobblemonShowdownFileSystemVisitor(visitor);
                 }
-                if (patchZipFsWritable) {
-                    visitor = new ZipFileSystemWritableVisitor(visitor);
-                }
                 reader.accept(visitor, 0);
                 if (patchLanDetector) {
                     log("patched LAN detector " + className);
                 }
                 if (patchCobblemonShowdownFs) {
                     log("patched Cobblemon Showdown file-system guard");
-                }
-                if (patchZipFsWritable) {
-                    log("patched ZipFileSystem writable checks");
                 }
                 return writer.toByteArray();
             } catch (Throwable ex) {
@@ -252,56 +236,6 @@ public final class ModernLanAgent {
                 visitor.visitEnd();
                 return null;
             }
-            return super.visitMethod(access, name, descriptor, signature, exceptions);
-        }
-    }
-
-    private static final class ZipFileSystemWritableVisitor extends ClassVisitor {
-        ZipFileSystemWritableVisitor(ClassVisitor visitor) {
-            super(Opcodes.ASM9, visitor);
-        }
-
-        @Override
-        public MethodVisitor visitMethod(
-                int access,
-                String name,
-                String descriptor,
-                String signature,
-                String[] exceptions) {
-            if ("isReadOnly".equals(name) && "()Z".equals(descriptor)) {
-                MethodVisitor visitor = super.visitMethod(access, name, descriptor, signature, exceptions);
-                visitor.visitCode();
-                visitor.visitInsn(Opcodes.ICONST_0);
-                visitor.visitInsn(Opcodes.IRETURN);
-                visitor.visitMaxs(1, 1);
-                visitor.visitEnd();
-                return null;
-            }
-
-            if ("checkWritable".equals(name) && "()V".equals(descriptor)) {
-                MethodVisitor visitor = super.visitMethod(access, name, descriptor, signature, exceptions);
-                visitor.visitCode();
-                visitor.visitInsn(Opcodes.RETURN);
-                visitor.visitMaxs(0, 1);
-                visitor.visitEnd();
-                return null;
-            }
-
-            if (name.startsWith("lambda$new$")
-                    && "(Ljava/nio/file/Path;)Ljava/lang/Boolean;".equals(descriptor)) {
-                MethodVisitor visitor = super.visitMethod(access, name, descriptor, signature, exceptions);
-                visitor.visitCode();
-                visitor.visitFieldInsn(
-                        Opcodes.GETSTATIC,
-                        "java/lang/Boolean",
-                        "TRUE",
-                        "Ljava/lang/Boolean;");
-                visitor.visitInsn(Opcodes.ARETURN);
-                visitor.visitMaxs(1, 1);
-                visitor.visitEnd();
-                return null;
-            }
-
             return super.visitMethod(access, name, descriptor, signature, exceptions);
         }
     }
