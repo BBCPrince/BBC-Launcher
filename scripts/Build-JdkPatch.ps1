@@ -80,6 +80,7 @@ Write-Host "    OK: native\XboxPathProbe.jar"
 $patchSrc = @(
     (Join-Path $src "sun\nio\fs\WindowsLinkSupport.java"),
     (Join-Path $src "sun\nio\fs\WindowsSecurity.java"),
+    (Join-Path $src "sun\nio\fs\WindowsFileStore.java"),
     (Join-Path $src "java\io\WinNTFileSystem.java")
 )
 $patchOutDir = Join-Path $patchRoot "out-patch"
