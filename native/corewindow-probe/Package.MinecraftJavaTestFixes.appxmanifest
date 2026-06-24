@@ -9,7 +9,7 @@
   <Identity
     Name="BBCLauncherbeta"
     Publisher="CN=Developer"
-    Version="1.0.404.0" />
+    Version="1.0.405.0" />
   <mp:PhoneIdentity
     PhoneProductId="465F59C0-2ECD-4161-A32A-3DD1858F9AEA"
     PhonePublisherId="00000000-0000-0000-0000-000000000000" />

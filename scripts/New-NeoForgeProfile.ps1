@@ -286,11 +286,42 @@ function Remove-BootstrapLauncherFromModulePath {
     }
 }
 
+function Add-JvmIgnoreListEntry {
+    param(
+        [System.Collections.Generic.List[string]]$Args,
+        [string]$EntryName
+    )
+
+    if ([string]::IsNullOrWhiteSpace($EntryName)) {
+        return
+    }
+
+    for ($i = 0; $i -lt $Args.Count; $i++) {
+        $arg = [string]$Args[$i]
+        if (-not $arg.StartsWith("-DignoreList=", [System.StringComparison]::Ordinal)) {
+            continue
+        }
+
+        if ($arg.IndexOf($EntryName, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
+            $Args[$i] = "$arg,$EntryName"
+        }
+        return
+    }
+}
+
 $jvmArgs = New-Object System.Collections.Generic.List[string]
 foreach ($arg in @($neoForgeVersionJson.arguments.jvm)) {
     if ($arg -is [string]) {
         $jvmArgs.Add($arg)
     }
+}
+
+$clientLibraryRoot = Join-Path $OutputRoot "libraries\net\minecraft\client"
+if (Test-Path $clientLibraryRoot) {
+    Get-ChildItem -Path $clientLibraryRoot -Recurse -Filter "*-srg.jar" -ErrorAction SilentlyContinue |
+        ForEach-Object {
+            Add-JvmIgnoreListEntry -Args $jvmArgs -EntryName $_.Name
+        }
 }
 Write-Utf8NoBom -Path (Join-Path $OutputRoot "minecraft-jvm-args.txt") -Text (($jvmArgs -join "`r`n") + "`r`n")
 
