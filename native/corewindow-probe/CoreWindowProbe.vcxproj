@@ -52,7 +52,7 @@
     <MinecraftPayloadFirstLaunchExclude>$(MinecraftPayloadRoot)\assets\objects\**\*.*;$(MinecraftPayloadRoot)\profiles\*\assets\objects\**\*.*</MinecraftPayloadFirstLaunchExclude>
   </PropertyGroup>
   <PropertyGroup Condition="'$(DownloadMinecraftFilesOnFirstLaunch)' == 'true' And '$(DownloadOnlyAssetObjectsOnFirstLaunch)' != 'true'">
-    <MinecraftPayloadFirstLaunchExclude>$(MinecraftPayloadRoot)\client.jar;$(MinecraftPayloadRoot)\libraries\**\*.*;$(MinecraftPayloadRoot)\assets\objects\**\*.*;$(MinecraftPayloadRoot)\versions\**\*.jar;$(MinecraftPayloadRoot)\mods-library\**\*.jar;$(MinecraftPayloadRoot)\game\**\*.jar;$(MinecraftPayloadRoot)\shared\classpath\**\*.*;$(MinecraftPayloadRoot)\profiles\*\client.jar;$(MinecraftPayloadRoot)\profiles\*\libraries\**\*.*;$(MinecraftPayloadRoot)\profiles\*\assets\objects\**\*.*;$(MinecraftPayloadRoot)\profiles\*\versions\**\*.jar;$(MinecraftPayloadRoot)\profiles\*\mods-library\**\*.jar;$(MinecraftPayloadRoot)\profiles\*\game\**\*.jar</MinecraftPayloadFirstLaunchExclude>
+    <MinecraftPayloadFirstLaunchExclude>$(MinecraftPayloadRoot)\client.jar;$(MinecraftPayloadRoot)\libraries\**\*.*;$(MinecraftPayloadRoot)\assets\objects\**\*.*;$(MinecraftPayloadRoot)\versions\**\*.jar;$(MinecraftPayloadRoot)\game\**\*.jar;$(MinecraftPayloadRoot)\shared\classpath\**\*.*;$(MinecraftPayloadRoot)\profiles\*\client.jar;$(MinecraftPayloadRoot)\profiles\*\libraries\**\*.*;$(MinecraftPayloadRoot)\profiles\*\assets\objects\**\*.*;$(MinecraftPayloadRoot)\profiles\*\versions\**\*.jar;$(MinecraftPayloadRoot)\profiles\*\game\**\*.jar</MinecraftPayloadFirstLaunchExclude>
   </PropertyGroup>
 
   <ItemGroup Label="ProjectConfigurations">
