@@ -20,6 +20,7 @@ BundleArtifacts/
 *.log.gz
 local.settings.json
 microsoft-client-id.txt
+microsoft-client-id.obf
 minecraft-auth-session.json
 minecraft-auth-session.protected
 *.protected

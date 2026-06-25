@@ -4136,6 +4136,67 @@ static std::wstring NormalizeMinecraftUuid(std::wstring uuid)
 
 static constexpr wchar_t kMinecraftLauncherTestRedirectUri[] = L"https://login.live.com/oauth20_desktop.srf";
 
+static bool TryDecodeObfuscatedMicrosoftClientId(std::string const& text, std::wstring& clientId)
+{
+    clientId.clear();
+    std::wstring encoded = TrimWhitespace(Utf8ToWide(text.c_str()));
+    std::wstring const prefix = L"BBC-LAUNCHER-CLIENT-ID-XOR-V1";
+    if (encoded.rfind(prefix, 0) == 0)
+    {
+        encoded.erase(0, prefix.size());
+        if (!encoded.empty() && (encoded[0] == L':' || encoded[0] == L'\r' || encoded[0] == L'\n'))
+        {
+            encoded.erase(0, 1);
+        }
+        encoded = TrimWhitespace(encoded);
+    }
+    if (encoded.empty())
+    {
+        return false;
+    }
+
+    try
+    {
+        IBuffer buffer = CryptographicBuffer::DecodeFromBase64String(hstring(encoded));
+        std::vector<unsigned char> bytes(buffer.Length());
+        if (!bytes.empty())
+        {
+            DataReader reader = DataReader::FromBuffer(buffer);
+            reader.ReadBytes(bytes);
+        }
+
+        static constexpr char key[] = "BBC Launcher local client id obfuscation v1";
+        size_t const keyLen = sizeof(key) - 1;
+        for (size_t i = 0; i < bytes.size(); ++i)
+        {
+            unsigned char mask = static_cast<unsigned char>(key[(i * 13 + 7) % keyLen]) ^
+                static_cast<unsigned char>(0x5A + ((i * 29) & 0xFF));
+            bytes[i] = static_cast<unsigned char>(bytes[i] ^ mask);
+        }
+
+        std::string decoded(bytes.begin(), bytes.end());
+        std::wstring candidate = TrimWhitespace(Utf8ToWide(decoded.c_str()));
+        if (candidate.size() < 30 || candidate.find(L'-') == std::wstring::npos)
+        {
+            WriteLogW(L"AUTH obfuscated Microsoft client ID decoded but did not look like an app id");
+            return false;
+        }
+
+        clientId = candidate;
+        return true;
+    }
+    catch (hresult_error const& ex)
+    {
+        WriteLogF(L"AUTH obfuscated Microsoft client ID decode failed hr=0x%08X", static_cast<unsigned int>(ex.code()));
+    }
+    catch (...)
+    {
+        WriteLogW(L"AUTH obfuscated Microsoft client ID decode failed with unknown exception");
+    }
+
+    return false;
+}
+
 static std::wstring ResolveMicrosoftClientId(std::wstring const& localRoot = L"")
 {
     std::wstring fromEnv = GetEnvironmentVariableString(L"MINECRAFT_XBOX_MICROSOFT_CLIENT_ID");
@@ -4147,6 +4208,13 @@ static std::wstring ResolveMicrosoftClientId(std::wstring const& localRoot = L""
     if (!localRoot.empty())
     {
         std::string text;
+        std::wstring obfuscatedClientId;
+        if (ReadSmallTextFileUtf8(localRoot + L"\\microsoft-client-id.obf", text) &&
+            TryDecodeObfuscatedMicrosoftClientId(text, obfuscatedClientId))
+        {
+            return obfuscatedClientId;
+        }
+
         if (ReadSmallTextFileUtf8(localRoot + L"\\microsoft-client-id.txt", text))
         {
             return TrimWhitespace(Utf8ToWide(text.c_str()));
@@ -4976,7 +5044,7 @@ static bool SignInMinecraftAccount(
     WriteLogF(L"AUTH sign-in starting clientIdConfigured=%d", session.clientId.empty() ? 0 : 1);
     if (session.clientId.empty())
     {
-        error = L"Microsoft client ID is not configured. Set MINECRAFT_XBOX_MICROSOFT_CLIENT_ID or create LocalState\\microsoft-client-id.txt.";
+        error = L"Microsoft client ID is not configured. Set MINECRAFT_XBOX_MICROSOFT_CLIENT_ID or create LocalState\\microsoft-client-id.obf / microsoft-client-id.txt.";
         return false;
     }
 

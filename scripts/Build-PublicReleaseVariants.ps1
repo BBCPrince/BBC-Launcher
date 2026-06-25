@@ -59,7 +59,7 @@ foreach ($variant in $variants) {
         throw "No MSIX was produced for $($variant.Name)"
     }
 
-    $targetName = "BBCLauncherbeta_1.0.408.0_x64_$($variant.Name)_public.msix"
+    $targetName = "BBCLauncherbeta_1.0.409.0_x64_$($variant.Name)_public.msix"
     $targetPath = Join-Path $releaseDir $targetName
     Copy-Item -LiteralPath $source.FullName -Destination $targetPath -Force
     $hash = Get-FileHash -Algorithm SHA256 -LiteralPath $targetPath
@@ -73,7 +73,7 @@ foreach ($variant in $variants) {
     $skipNative = $true
 }
 
-$manifestPath = Join-Path $releaseDir "BBCLauncherbeta_1.0.408.0_public_sha256.json"
+$manifestPath = Join-Path $releaseDir "BBCLauncherbeta_1.0.409.0_public_sha256.json"
 $built | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
 
 Write-Host ""
