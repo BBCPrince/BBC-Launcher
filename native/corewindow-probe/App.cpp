@@ -5060,13 +5060,10 @@ static bool SignInMinecraftAccount(
     return true;
 }
 
-static MinecraftAuthSession ResolveMinecraftAuthSession(CoreWindow const& window, std::wstring const& localRoot)
+static bool IsMinecraftAccountSigninEnabled(std::wstring const& localRoot)
 {
-    MinecraftAuthSession session = {};
-    session.clientId = ResolveMicrosoftClientId(localRoot);
 #if defined(MINECRAFT_XBOX_DISABLE_ACCOUNT_SIGNIN_BUILD)
-    WriteLogW(L"AUTH disabled by build flag; using offline placeholders");
-    return session;
+    return false;
 #endif
     bool signInEnabled =
         IsTruthyEnvironment(L"MINECRAFT_XBOX_ENABLE_ACCOUNT_SIGNIN", true) ||
@@ -5075,6 +5072,18 @@ static MinecraftAuthSession ResolveMinecraftAuthSession(CoreWindow const& window
     {
         signInEnabled = false;
     }
+    return signInEnabled;
+}
+
+static MinecraftAuthSession ResolveMinecraftAuthSession(CoreWindow const& window, std::wstring const& localRoot)
+{
+    MinecraftAuthSession session = {};
+    session.clientId = ResolveMicrosoftClientId(localRoot);
+#if defined(MINECRAFT_XBOX_DISABLE_ACCOUNT_SIGNIN_BUILD)
+    WriteLogW(L"AUTH disabled by build flag; using offline placeholders");
+    return session;
+#endif
+    bool signInEnabled = IsMinecraftAccountSigninEnabled(localRoot);
     WriteLogF(
         L"AUTH resolve enabled=%d marker=%d disableMarker=%d protectedCachedSession=%d legacyCachedSession=%d clientIdConfigured=%d",
         signInEnabled ? 1 : 0,
@@ -5114,6 +5123,44 @@ static MinecraftAuthSession ResolveMinecraftAuthSession(CoreWindow const& window
     {
     }
     return session;
+}
+
+static bool EnsureMinecraftOwnershipBeforeDownloads(
+    CoreWindow const& window,
+    std::wstring const& localRoot,
+    MinecraftAuthSession const& session)
+{
+    bool ownershipRequired = IsMinecraftAccountSigninEnabled(localRoot) ||
+        FileExists(localRoot + L"\\require-account-ownership-before-download");
+    WriteLogF(
+        L"AUTH ownership gate required=%d online=%d username=%s",
+        ownershipRequired ? 1 : 0,
+        session.online ? 1 : 0,
+        session.username.c_str());
+
+    if (!ownershipRequired || session.online)
+    {
+        return true;
+    }
+
+    WriteLogW(L"AUTH ownership verification required before Minecraft downloads; refusing offline download/install");
+    try
+    {
+        MessageDialog dialog(
+            L"Microsoft/Minecraft sign-in is required before this launcher downloads Minecraft files.\r\n\r\n"
+            L"Sign in with an account that owns Minecraft Java Edition, then try again.");
+        ShowDialogAndPump(window, dialog);
+    }
+    catch (hresult_error const& ex)
+    {
+        WriteLogF(L"AUTH ownership gate dialog failed hr=0x%08X", static_cast<unsigned int>(ex.code()));
+    }
+    catch (...)
+    {
+        WriteLogW(L"AUTH ownership gate dialog failed with unknown exception");
+    }
+
+    return false;
 }
 
 static std::wstring FileNameOnly(std::wstring const& path)
@@ -8905,6 +8952,8 @@ static bool RunNativeMinecraft(CoreWindow const& window)
         return false;
     }
 
+    CopyPackagedLocalStatePayloadIfPresent(localRoot, packageRoot);
+
     MinecraftAuthSession authSession = ResolveMinecraftAuthSession(window, localRoot);
     ResolveLaunchResolution(window, localRoot);
 
@@ -8926,11 +8975,14 @@ static bool RunNativeMinecraft(CoreWindow const& window)
         boundsWidth,
         boundsHeight);
 
-    CopyPackagedLocalStatePayloadIfPresent(localRoot, packageRoot);
-
     MinecraftLaunchProfile launchProfile = PickMinecraftLaunchProfileInteractive(window, localRoot);
     if (launchProfile.root.empty())
     {
+        return false;
+    }
+    if (!EnsureMinecraftOwnershipBeforeDownloads(window, localRoot, authSession))
+    {
+        WriteLogW(L"FAIL: Minecraft ownership verification is required before profile download hydration");
         return false;
     }
     g_downloadWorkPerformed.store(false, std::memory_order_release);

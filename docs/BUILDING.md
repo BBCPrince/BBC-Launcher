@@ -137,6 +137,12 @@ or place this ignored local file in the app LocalState payload before packaging:
 microsoft-client-id.txt
 ```
 
+When account sign-in is enabled, the native launcher verifies the Microsoft/Minecraft session before hydrating profile downloads. To force that behavior for a private payload, include this ignored marker file beside `microsoft-client-id.txt`:
+
+```text
+require-account-ownership-before-download
+```
+
 Do not commit `microsoft-client-id.txt`, cached auth sessions, access tokens, or generated package logs. The native launcher stores Minecraft sessions in `minecraft-auth-session.protected` when sign-in succeeds.
 
 ## 8. Find the Package
