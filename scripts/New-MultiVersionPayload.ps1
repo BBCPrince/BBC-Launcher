@@ -225,7 +225,7 @@ function Test-NeoForgeProfileRoot {
     )
 }
 
-function Add-GeneratedMinecraftClientSrgJars {
+function Add-GeneratedMinecraftClientSupportJars {
     param(
         [string]$ProfileRoot,
         [System.Collections.Generic.List[string]]$Entries
@@ -236,7 +236,8 @@ function Add-GeneratedMinecraftClientSrgJars {
         return
     }
 
-    Get-ChildItem -Path $clientLibraryRoot -Recurse -Filter "*-srg.jar" -ErrorAction SilentlyContinue |
+    Get-ChildItem -Path $clientLibraryRoot -Recurse -Filter "*.jar" -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name.EndsWith("-extra.jar", [System.StringComparison]::OrdinalIgnoreCase) -or $_.Name.EndsWith("-srg.jar", [System.StringComparison]::OrdinalIgnoreCase) } |
         Sort-Object FullName |
         ForEach-Object {
             $relative = [System.IO.Path]::GetRelativePath($ProfileRoot, $_.FullName).Replace("/", "\")
@@ -311,7 +312,7 @@ function New-ProfileClasspath {
     }
 
     if ($isNeoForgeProfile) {
-        Add-GeneratedMinecraftClientSrgJars -ProfileRoot $ProfileRoot -Entries $entries
+        Add-GeneratedMinecraftClientSupportJars -ProfileRoot $ProfileRoot -Entries $entries
     }
 
     Write-Utf8NoBom -Path (Join-Path $ProfileRoot "minecraft-classpath.txt") -Text (($entries -join "`r`n") + "`r`n")

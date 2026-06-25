@@ -318,7 +318,8 @@ foreach ($arg in @($neoForgeVersionJson.arguments.jvm)) {
 
 $clientLibraryRoot = Join-Path $OutputRoot "libraries\net\minecraft\client"
 if (Test-Path $clientLibraryRoot) {
-    Get-ChildItem -Path $clientLibraryRoot -Recurse -Filter "*-srg.jar" -ErrorAction SilentlyContinue |
+    Get-ChildItem -Path $clientLibraryRoot -Recurse -Filter "*.jar" -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name.EndsWith("-extra.jar", [System.StringComparison]::OrdinalIgnoreCase) -or $_.Name.EndsWith("-srg.jar", [System.StringComparison]::OrdinalIgnoreCase) } |
         ForEach-Object {
             Add-JvmIgnoreListEntry -Args $jvmArgs -EntryName $_.Name
         }

@@ -251,6 +251,12 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <PRIResource>false</PRIResource>
     </Content>
+    <Content Include="$(MinecraftPayloadRoot)\profiles\1.20.1-forge-47.1.106\libraries\net\minecraft\client\1.20.1-20230612.114412\client-1.20.1-20230612.114412-extra.jar"
+             Condition="'$(IncludeMinecraftPayload)' == 'true' And Exists('$(MinecraftPayloadRoot)\profiles\1.20.1-forge-47.1.106\libraries\net\minecraft\client\1.20.1-20230612.114412\client-1.20.1-20230612.114412-extra.jar')">
+      <Link>LocalStatePayload\profiles\1.20.1-forge-47.1.106\libraries\net\minecraft\client\1.20.1-20230612.114412\client-1.20.1-20230612.114412-extra.jar</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <PRIResource>false</PRIResource>
+    </Content>
     <Content Include="$(MinecraftPayloadRoot)\profiles\1.21.1-neoforge-21.1.233\libraries\net\neoforged\neoforge\21.1.233\neoforge-21.1.233-client.jar"
              Condition="'$(IncludeMinecraftPayload)' == 'true' And Exists('$(MinecraftPayloadRoot)\profiles\1.21.1-neoforge-21.1.233\libraries\net\neoforged\neoforge\21.1.233\neoforge-21.1.233-client.jar')">
       <Link>LocalStatePayload\profiles\1.21.1-neoforge-21.1.233\libraries\net\neoforged\neoforge\21.1.233\neoforge-21.1.233-client.jar</Link>
@@ -266,6 +272,12 @@
     <Content Include="$(MinecraftPayloadRoot)\profiles\1.21.1-neoforge-21.1.233\libraries\net\minecraft\client\1.21.1-20240808.144430\client-1.21.1-20240808.144430-srg.jar"
              Condition="'$(IncludeMinecraftPayload)' == 'true' And Exists('$(MinecraftPayloadRoot)\profiles\1.21.1-neoforge-21.1.233\libraries\net\minecraft\client\1.21.1-20240808.144430\client-1.21.1-20240808.144430-srg.jar')">
       <Link>LocalStatePayload\profiles\1.21.1-neoforge-21.1.233\libraries\net\minecraft\client\1.21.1-20240808.144430\client-1.21.1-20240808.144430-srg.jar</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <PRIResource>false</PRIResource>
+    </Content>
+    <Content Include="$(MinecraftPayloadRoot)\profiles\1.21.1-neoforge-21.1.233\libraries\net\minecraft\client\1.21.1-20240808.144430\client-1.21.1-20240808.144430-extra.jar"
+             Condition="'$(IncludeMinecraftPayload)' == 'true' And Exists('$(MinecraftPayloadRoot)\profiles\1.21.1-neoforge-21.1.233\libraries\net\minecraft\client\1.21.1-20240808.144430\client-1.21.1-20240808.144430-extra.jar')">
+      <Link>LocalStatePayload\profiles\1.21.1-neoforge-21.1.233\libraries\net\minecraft\client\1.21.1-20240808.144430\client-1.21.1-20240808.144430-extra.jar</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <PRIResource>false</PRIResource>
     </Content>
