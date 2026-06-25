@@ -91,6 +91,7 @@ local-test-files\LocalState-MultiVersion\
 
 - [Build guide](docs/BUILDING.md)
 - [Mod distribution notes](docs/MOD_DISTRIBUTION.md)
+- [Current local test mod list and upstream links](docs/MOD_DISTRIBUTION.md#current-local-test-mod-links)
 - [Project map](docs/PROJECT_MAP.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)
