@@ -87,6 +87,22 @@ The combined payload is created at:
 local-test-files\LocalState-MultiVersion\
 ```
 
+## Modrinth Mods
+
+BBC Launcher includes an experimental in-app Modrinth installer for adding compatible mods without using a PC file manager every time.
+
+The launcher can:
+
+- Download the recommended preset mods for supported Minecraft versions and loaders.
+- Search Modrinth by mod name or install by Modrinth slug.
+- Install required Modrinth dependencies when the selected mod declares them.
+- Create custom mod folders so different mod sets can stay separated.
+- Keep controller support available in custom folders by carrying over the needed controller support mods from the default preset.
+
+Managed folders such as `default` and `legacy4j` are intended to be simple presets. Custom folders are intended for user-added mods. After a custom folder has already been set up, the launcher should ask whether to continue launching or add more mods.
+
+This repository still does not commit or redistribute third-party mod `.jar` files. Public source releases should link to Modrinth or CurseForge project pages instead of uploading mod jars. See [Mod distribution notes](docs/MOD_DISTRIBUTION.md) for the current tested mod list and upstream links.
+
 ## Useful Docs
 
 - [Build guide](docs/BUILDING.md)
